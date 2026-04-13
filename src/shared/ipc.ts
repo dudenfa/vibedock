@@ -1,10 +1,5 @@
 import type { AppSettings } from "./settings";
-import type {
-  ProviderDefinition,
-  ProviderMode,
-  ProviderResolvedTarget,
-  ProviderStatus
-} from "./providers";
+import type { ProviderDefinition, ProviderResolvedTarget, ProviderStatus, ProviderSurface } from "./providers";
 
 export interface ViewBounds {
   x: number;
@@ -17,12 +12,12 @@ export interface DockState {
   settings: AppSettings;
   providers: ProviderDefinition[];
   activeTarget: ProviderResolvedTarget;
+  activeSurface: ProviderSurface;
   status: ProviderStatus;
   statusMessage: string;
 }
 
 export interface ProviderNavigationRequest {
-  mode: ProviderMode;
   input: string;
 }
 
@@ -32,6 +27,8 @@ export interface DockApi {
   updateSettings: (patch: Partial<AppSettings>) => Promise<DockState>;
   setContentBounds: (bounds: ViewBounds) => Promise<void>;
   openExternal: (url: string) => Promise<void>;
+  beginScreenshotMode: () => Promise<void>;
+  openSettingsPanel: () => Promise<void>;
   onStateChange: (listener: (state: DockState) => void) => () => void;
 }
 
@@ -41,6 +38,7 @@ export const IPC_CHANNELS = {
   updateSettings: "dock:update-settings",
   setContentBounds: "dock:set-content-bounds",
   openExternal: "dock:open-external",
+  beginScreenshotMode: "dock:begin-screenshot-mode",
+  openSettingsPanel: "dock:open-settings-panel",
   stateChanged: "dock:state-changed"
 } as const;
-

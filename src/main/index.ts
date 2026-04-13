@@ -7,14 +7,22 @@ import { ProviderViewManager } from "./provider-view-manager";
 import { SettingsService } from "./settings";
 import { ShortcutService } from "./shortcuts";
 import { WindowManager } from "./window-manager";
+import { cleanupChromiumCaches } from "./cache-maintenance";
 
 const logger = new Logger();
 const APP_NAME = "VibeDock";
+const DISABLED_CHROMIUM_FEATURES = [
+  "CompressionDictionaryTransport",
+  "CompressionDictionaryTransportBackend"
+];
 
 let providerViewManager: ProviderViewManager;
 let windowManager: WindowManager;
 let settingsService: SettingsService;
 let shortcutService: ShortcutService;
+
+app.commandLine.appendSwitch("disable-features", DISABLED_CHROMIUM_FEATURES.join(","));
+app.commandLine.appendSwitch("disable-http-cache");
 
 async function createApplication(): Promise<void> {
   if (process.env.NODE_ENV === "test") {
@@ -25,16 +33,24 @@ async function createApplication(): Promise<void> {
   }
 
   logger.initialize();
+  cleanupChromiumCaches(app.getPath("userData"), logger);
   logger.info("Starting VibeDock");
   settingsService = new SettingsService(logger);
   windowManager = new WindowManager(settingsService, logger);
   const window = windowManager.create();
 
   const registry = new ProviderRegistry();
-  providerViewManager = new ProviderViewManager(window, registry, settingsService, logger);
+  providerViewManager = new ProviderViewManager(
+    window,
+    registry,
+    settingsService,
+    logger
+  );
 
   shortcutService = new ShortcutService(logger, () => {
     windowManager.toggleVisibility();
+  }, () => {
+    windowManager.beginScreenshotMode();
   });
   shortcutService.register(settingsService.get().shortcut);
 
@@ -43,7 +59,7 @@ async function createApplication(): Promise<void> {
   });
 
   wireIpc(window);
-  await loadRenderer(window);
+  await loadRenderer(window, "dock");
 
   if (process.platform === "darwin" && app.isPackaged && settingsService.get().launchAtLogin) {
     app.setLoginItemSettings({
@@ -61,13 +77,17 @@ async function createApplication(): Promise<void> {
   }
 }
 
-async function loadRenderer(window: BrowserWindow): Promise<void> {
+async function loadRenderer(window: BrowserWindow, panel: "dock" | "settings"): Promise<void> {
   if (process.env.VITE_DEV_SERVER_URL) {
-    await window.loadURL(process.env.VITE_DEV_SERVER_URL);
+    await window.loadURL(`${process.env.VITE_DEV_SERVER_URL}?panel=${panel}`);
     return;
   }
 
-  await window.loadFile(path.resolve(__dirname, "../../dist/index.html"));
+  await window.loadFile(path.resolve(__dirname, "../../dist/index.html"), {
+    query: {
+      panel
+    }
+  });
 }
 
 function wireIpc(window: BrowserWindow): void {
@@ -110,12 +130,25 @@ function wireIpc(window: BrowserWindow): void {
     await shell.openExternal(url);
   });
 
+  ipcMain.handle(IPC_CHANNELS.beginScreenshotMode, async () => {
+    windowManager.beginScreenshotMode();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.openSettingsPanel, async () => {
+    const settingsWindow = windowManager.openSettingsPanel();
+    if (!settingsWindow.webContents.getURL()) {
+      await loadRenderer(settingsWindow, "settings");
+    }
+  });
+
   window.on("closed", () => {
     ipcMain.removeHandler(IPC_CHANNELS.getState);
     ipcMain.removeHandler(IPC_CHANNELS.navigate);
     ipcMain.removeHandler(IPC_CHANNELS.updateSettings);
     ipcMain.removeHandler(IPC_CHANNELS.setContentBounds);
     ipcMain.removeHandler(IPC_CHANNELS.openExternal);
+    ipcMain.removeHandler(IPC_CHANNELS.beginScreenshotMode);
+    ipcMain.removeHandler(IPC_CHANNELS.openSettingsPanel);
   });
 }
 

@@ -7,7 +7,8 @@ const CACHE_DIRECTORY_NAMES = new Set([
   "Code Cache",
   "GPUCache",
   "DawnGraphiteCache",
-  "DawnWebGPUCache"
+  "DawnWebGPUCache",
+  "Shared Dictionary"
 ]);
 
 export function cleanupChromiumCaches(userDataPath: string, logger: Logger): void {
@@ -17,7 +18,6 @@ export function cleanupChromiumCaches(userDataPath: string, logger: Logger): voi
     removeDirectory(path.join(userDataPath, directoryName), removedPaths);
   }
 
-  removeDirectory(path.join(userDataPath, "Shared Dictionary", "cache"), removedPaths);
   walkForPartitionCaches(path.join(userDataPath, "Partitions"), removedPaths);
 
   if (removedPaths.length > 0) {
@@ -43,10 +43,6 @@ function walkForPartitionCaches(rootPath: string, removedPaths: string[]): void 
     if (CACHE_DIRECTORY_NAMES.has(entry.name)) {
       removeDirectory(entryPath, removedPaths);
       continue;
-    }
-
-    if (entry.name === "Shared Dictionary") {
-      removeDirectory(path.join(entryPath, "cache"), removedPaths);
     }
 
     walkForPartitionCaches(entryPath, removedPaths);

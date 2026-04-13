@@ -1,4 +1,4 @@
-import type { ProviderDefinition, ProviderMode, ProviderResolvedTarget } from "../../shared/providers";
+import type { ProviderDefinition, ProviderResolvedTarget } from "../../shared/providers";
 import type { AppSettings } from "../../shared/settings";
 import { BaseProvider, type ProviderCreateViewOptions, type ProviderViewInstance } from "./base";
 
@@ -13,98 +13,77 @@ const X_ALLOWED_HOSTS = [
   "platform.twitter.com"
 ];
 
-const X_COMPACT_LAYOUT_CSS = `
-  @media (min-width: 720px) {
-    header[role="banner"],
-    [data-testid="sidebarColumn"] {
-      display: none !important;
-    }
-
-    main[role="main"] > div {
-      justify-content: center !important;
-    }
-
-    [data-testid="primaryColumn"] {
-      width: min(100vw, 680px) !important;
-      max-width: min(100vw, 680px) !important;
-      border-right: none !important;
-    }
-  }
-
-  body {
-    background: #000 !important;
-  }
-`;
-
-const CHROME_VERSION = process.versions.chrome || "136.0.0.0";
-const CHROME_MAJOR_VERSION = CHROME_VERSION.split(".")[0] || "136";
 const X_MOBILE_USER_AGENT =
-  `Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 ` +
-  `(KHTML, like Gecko) Chrome/${CHROME_VERSION} Mobile Safari/537.36`;
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) " +
+  "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
 
-const X_MOBILE_USER_AGENT_METADATA = {
-  brands: [
-    { brand: "Chromium", version: CHROME_MAJOR_VERSION },
-    { brand: "Google Chrome", version: CHROME_MAJOR_VERSION },
-    { brand: "Not.A/Brand", version: "24" }
-  ],
-  fullVersionList: [
-    { brand: "Chromium", version: CHROME_VERSION },
-    { brand: "Google Chrome", version: CHROME_VERSION },
-    { brand: "Not.A/Brand", version: "24.0.0.0" }
-  ],
-  platform: "Android",
-  platformVersion: "14.0.0",
-  architecture: "arm",
-  model: "Pixel 7",
-  mobile: true,
-  bitness: "64",
-  wow64: false,
-  formFactors: ["Mobile"]
-} as const;
+const X_TIMELINE_LAYOUT_CSS = `
+  html, body {
+    background: #000 !important;
+    overscroll-behavior-y: contain;
+  }
 
-const X_MOBILE_LAYOUT_CSS = `
+  header[role="banner"] {
+    display: none !important;
+  }
+
+  [data-testid="sidebarColumn"] {
+    display: none !important;
+  }
+
+  main[role="main"] > div {
+    justify-content: flex-start !important;
+  }
+
+  [data-testid="primaryColumn"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    border-right: none !important;
+    border-left: none !important;
+  }
+
   body {
     background: #000 !important;
   }
 `;
+
+const X_ABORT_ERROR_CODE = -3;
+const X_LOAD_TIMEOUT_MS = 20000;
+const X_MOBILE_MAX_WIDTH = 430;
+const X_MOBILE_MIN_WIDTH = 390;
+const X_MOBILE_MIN_HEIGHT = 664;
+const X_MOBILE_MAX_HEIGHT = 932;
+const X_MOBILE_DEVICE_SCALE_FACTOR = 3;
 
 const X_DEFINITION: ProviderDefinition = {
   id: "x",
   label: "X",
-  description: "Logged-in X timeline browsing inside an isolated browser view.",
-  capabilities: {
-    browser: true,
-    embed: false,
-    browserExperimental: true
-  }
+  description: "Logged-in X mobile web timeline inside an isolated browser view."
 };
 
 export class XProvider extends BaseProvider {
   definition = X_DEFINITION;
 
-  buildHomeUrl(mode: ProviderMode): string {
-    void mode;
+  buildHomeUrl(): string {
     return "https://x.com/home";
   }
 
-  normalizeInput(input: string, mode: ProviderMode): ProviderResolvedTarget {
-    const trimmed = input.trim() || this.buildHomeUrl(mode);
+  normalizeInput(input: string): ProviderResolvedTarget {
+    const trimmed = input.trim() || this.buildHomeUrl();
 
     try {
-      const normalized = this.normalizeUrl(trimmed, mode);
+      const normalized = this.normalizeUrl(trimmed);
       return {
         providerId: "x",
-        mode,
         input: trimmed,
         resolvedUrl: normalized,
         title: "X Timeline"
       };
     } catch {
-      const fallback = this.buildHomeUrl(mode);
+      const fallback = this.buildHomeUrl();
       return {
         providerId: "x",
-        mode,
         input: fallback,
         resolvedUrl: fallback,
         title: "X Timeline"
@@ -112,29 +91,55 @@ export class XProvider extends BaseProvider {
     }
   }
 
-  createSessionPartition(mode: ProviderMode, settings: AppSettings): string {
-    void mode;
+  createSessionPartition(settings: AppSettings): string {
     void settings;
     return "persist:vibedock/provider/x/browser/default";
   }
 
   async createView(options: ProviderCreateViewOptions): Promise<ProviderViewInstance> {
-    const partition = this.createSessionPartition(options.mode, options.settings);
+    const partition = this.createSessionPartition(options.settings);
+    const surface = options.settings.xBootstrapCompleted ? "mobile" : "bootstrap";
     options.logger.info("Creating X browser view", {
       partition,
       resolvedUrl: options.target.resolvedUrl,
-      mobileEmulation: options.settings.xMobileEmulation
+      surface
     });
-    const { view } = this.createIsolatedView(partition, options.logger, `x:${options.mode}`);
-    const applyBounds = (bounds: Electron.Rectangle) => {
-      view.setBounds(bounds);
-    };
 
-    if (options.settings.xMobileEmulation) {
-      await this.applyMobileBrowserOverrides(view, options.logger);
+    const view = this.createIsolatedView(partition, options.logger, "x:browser");
+    if (surface === "bootstrap") {
+      options.logger.info("Starting X in desktop login helper mode");
+      options.logger.info("Applying initial X view bounds", {
+        bounds: options.initialBounds
+      });
+      view.setBounds(options.initialBounds);
+      options.logger.info("Loading X URL", {
+        resolvedUrl: options.target.resolvedUrl
+      });
+      await this.loadTimelineUrl(view, options);
+      return {
+        view,
+        surface,
+        destroy: () => {
+          if (!view.webContents.isDestroyed()) {
+            view.webContents.close({ waitForBeforeUnload: false });
+          }
+        }
+      };
     }
 
+    let hasFinishedFirstLoad = false;
+    const applyBounds = (bounds: Electron.Rectangle) => {
+      view.setBounds(bounds);
+      if (hasFinishedFirstLoad) {
+        void this.applyMobileBrowserOverrides(view, options.logger, bounds);
+      }
+    };
+
+    view.webContents.setUserAgent(X_MOBILE_USER_AGENT);
+
     view.webContents.on("did-finish-load", () => {
+      hasFinishedFirstLoad = true;
+      void this.applyMobileBrowserOverrides(view, options.logger, view.getBounds());
       this.applyLayoutCss(view, options);
     });
 
@@ -146,12 +151,12 @@ export class XProvider extends BaseProvider {
     options.logger.info("Loading X URL", {
       resolvedUrl: options.target.resolvedUrl
     });
-    await view.webContents.loadURL(options.target.resolvedUrl);
+    await this.loadTimelineUrl(view, options);
     this.applyLayoutCss(view, options);
 
     return {
       view,
-      title: options.target.title,
+      surface,
       setBounds: applyBounds,
       destroy: () => {
         if (view.webContents.debugger.isAttached()) {
@@ -169,40 +174,130 @@ export class XProvider extends BaseProvider {
     };
   }
 
-  isInternalNavigation(url: string, mode: ProviderMode): boolean {
-    void mode;
-    try {
-      const parsed = new URL(url);
-
-      if (!X_ALLOWED_HOSTS.includes(parsed.hostname)) {
-        return false;
-      }
-
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   private applyLayoutCss(view: ProviderViewInstance["view"], options: ProviderCreateViewOptions): void {
     if (view.webContents.isDestroyed()) {
       return;
     }
 
-    const css = options.settings.xMobileEmulation ? X_MOBILE_LAYOUT_CSS : X_COMPACT_LAYOUT_CSS;
-
-    void view.webContents.insertCSS(css).catch(() => {
-      options.logger.warn("Unable to apply compact X layout");
+    void view.webContents.insertCSS(X_TIMELINE_LAYOUT_CSS).catch(() => {
+      options.logger.warn("Unable to apply X timeline layout");
     });
+  }
+
+  private async loadTimelineUrl(
+    view: ProviderViewInstance["view"],
+    options: ProviderCreateViewOptions
+  ): Promise<void> {
+    const waitForMainFrameLoad = this.waitForMainFrameLoad(view, options);
+    const loadUrl = view.webContents.loadURL(options.target.resolvedUrl).catch((error: Error) => {
+      if (this.isAbortError(error)) {
+        options.logger.warn("X navigation was interrupted during handoff; waiting for the final page load", {
+          resolvedUrl: options.target.resolvedUrl,
+          message: error.message
+        });
+        return;
+      }
+
+      throw error;
+    });
+
+    await Promise.all([waitForMainFrameLoad, loadUrl]);
+    options.logger.info("X timeline finished loading", {
+      resolvedUrl: view.webContents.getURL() || options.target.resolvedUrl
+    });
+  }
+
+  private waitForMainFrameLoad(
+    view: ProviderViewInstance["view"],
+    options: ProviderCreateViewOptions
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+
+      const finish = () => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        cleanup();
+        resolve();
+      };
+
+      const fail = (message: string) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        cleanup();
+        reject(new Error(message));
+      };
+
+      const onFinish = () => {
+        finish();
+      };
+
+      const onFail = (
+        _event: Electron.Event,
+        errorCode: number,
+        errorDescription: string,
+        validatedURL: string,
+        isMainFrame: boolean
+      ) => {
+        if (!isMainFrame) {
+          return;
+        }
+
+        if (errorCode === X_ABORT_ERROR_CODE) {
+          options.logger.warn("X reported a provisional navigation abort; waiting for follow-up navigation", {
+            errorCode,
+            errorDescription,
+            validatedURL
+          });
+          return;
+        }
+
+        fail(`${errorDescription} (${errorCode}) loading '${validatedURL}'`);
+      };
+
+      const onDestroyed = () => {
+        fail("X view was destroyed before navigation completed");
+      };
+
+      const timeout = setTimeout(() => {
+        fail(`Timed out after ${X_LOAD_TIMEOUT_MS}ms waiting for X to finish loading`);
+      }, X_LOAD_TIMEOUT_MS);
+
+      const cleanup = () => {
+        clearTimeout(timeout);
+        view.webContents.removeListener("did-finish-load", onFinish);
+        view.webContents.removeListener("did-fail-load", onFail);
+        view.webContents.removeListener("did-fail-provisional-load", onFail);
+        view.webContents.removeListener("destroyed", onDestroyed);
+      };
+
+      view.webContents.on("did-finish-load", onFinish);
+      view.webContents.on("did-fail-load", onFail);
+      view.webContents.on("did-fail-provisional-load", onFail);
+      view.webContents.on("destroyed", onDestroyed);
+    });
+  }
+
+  private isAbortError(error: Error): boolean {
+    return error.message.includes("ERR_ABORTED");
   }
 
   private async applyMobileBrowserOverrides(
     view: ProviderViewInstance["view"],
-    logger: ProviderCreateViewOptions["logger"]
+    logger: ProviderCreateViewOptions["logger"],
+    bounds: Electron.Rectangle
   ): Promise<void> {
     const devtools = view.webContents.debugger;
+    const metrics = this.getMobileMetrics(bounds);
 
     try {
+      logger.info("Applying X mobile browser overrides");
       if (!devtools.isAttached()) {
         devtools.attach("1.3");
       }
@@ -210,8 +305,22 @@ export class XProvider extends BaseProvider {
       await devtools.sendCommand("Emulation.setUserAgentOverride", {
         userAgent: X_MOBILE_USER_AGENT,
         acceptLanguage: "en-US,en;q=0.9",
-        platform: "Android",
-        userAgentMetadata: X_MOBILE_USER_AGENT_METADATA
+        platform: "iPhone"
+      });
+      await devtools.sendCommand("Emulation.setDeviceMetricsOverride", {
+        width: metrics.width,
+        height: metrics.height,
+        deviceScaleFactor: X_MOBILE_DEVICE_SCALE_FACTOR,
+        mobile: true,
+        screenWidth: metrics.width,
+        screenHeight: metrics.height,
+        positionX: 0,
+        positionY: 0,
+        dontSetVisibleSize: false,
+        screenOrientation: {
+          type: "portraitPrimary",
+          angle: 0
+        }
       });
       await devtools.sendCommand("Emulation.setTouchEmulationEnabled", {
         enabled: true,
@@ -231,12 +340,21 @@ export class XProvider extends BaseProvider {
     }
   }
 
-  private normalizeUrl(input: string, mode: ProviderMode): string {
+  private getMobileMetrics(bounds: Electron.Rectangle): { width: number; height: number } {
+    const safeWidth = Math.max(1, bounds.width);
+    const safeHeight = Math.max(1, bounds.height);
+    const width = Math.max(X_MOBILE_MIN_WIDTH, Math.min(safeWidth, X_MOBILE_MAX_WIDTH));
+    const proportionalHeight = Math.round((safeHeight / safeWidth) * width);
+    const height = Math.max(X_MOBILE_MIN_HEIGHT, Math.min(proportionalHeight, X_MOBILE_MAX_HEIGHT));
+    return { width, height };
+  }
+
+  private normalizeUrl(input: string): string {
     const candidate = input.startsWith("http") ? input : `https://${input}`;
     const parsed = new URL(candidate);
 
-    if (!["x.com", "twitter.com", "www.x.com", "www.twitter.com"].includes(parsed.hostname)) {
-      return this.buildHomeUrl(mode);
+    if (!X_ALLOWED_HOSTS.includes(parsed.hostname)) {
+      return this.buildHomeUrl();
     }
 
     const pathname = !parsed.pathname || parsed.pathname === "/" ? "/home" : parsed.pathname;

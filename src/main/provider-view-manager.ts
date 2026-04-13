@@ -1,7 +1,6 @@
 import { BrowserWindow, type Rectangle } from "electron";
-import type { DockState, ViewBounds } from "../shared/ipc";
-import type { ProviderNavigationRequest } from "../shared/ipc";
-import type { ProviderResolvedTarget, ProviderStatus } from "../shared/providers";
+import type { DockState, ProviderNavigationRequest, ViewBounds } from "../shared/ipc";
+import type { ProviderResolvedTarget, ProviderStatus, ProviderSurface } from "../shared/providers";
 import { Logger } from "./logger";
 import { ProviderRegistry } from "./provider-registry";
 import { SettingsService } from "./settings";
@@ -9,14 +8,19 @@ import type { ProviderViewInstance } from "./providers/base";
 
 type StateListener = (state: DockState) => void;
 
+const MIN_CONTENT_WIDTH = 240;
+const MIN_CONTENT_HEIGHT = 200;
+
 export class ProviderViewManager {
   private contentBounds: ViewBounds = { x: 16, y: 92, width: 388, height: 556 };
   private activeView?: ProviderViewInstance;
+  private activeSurface: ProviderSurface = "mobile";
   private status: ProviderStatus = "idle";
   private statusMessage = "Ready";
   private activeTarget: ProviderResolvedTarget;
   private initialized = false;
   private initializationPromise?: Promise<void>;
+  private navigationSequence = 0;
   private readonly listeners = new Set<StateListener>();
 
   constructor(
@@ -29,8 +33,9 @@ export class ProviderViewManager {
     const provider = this.registry.get(appSettings.providerId);
     const initialInput = appSettings.restoreLastSession
       ? appSettings.currentInput
-      : provider.buildHomeUrl(appSettings.mode);
-    this.activeTarget = provider.normalizeInput(initialInput, appSettings.mode);
+      : provider.buildHomeUrl();
+    this.activeTarget = provider.normalizeInput(initialInput);
+    this.activeSurface = appSettings.xBootstrapCompleted ? "mobile" : "bootstrap";
   }
 
   async initialize(): Promise<void> {
@@ -39,7 +44,6 @@ export class ProviderViewManager {
       resolvedUrl: this.activeTarget.resolvedUrl
     });
     await this.navigate({
-      mode: this.activeTarget.mode,
       input: this.activeTarget.input
     });
     this.initialized = true;
@@ -62,47 +66,57 @@ export class ProviderViewManager {
   }
 
   async navigate(request: ProviderNavigationRequest): Promise<DockState> {
+    const navigationId = ++this.navigationSequence;
     const appSettings = this.settings.get();
     const provider = this.registry.get(appSettings.providerId);
-    const normalizedRequest = {
-      ...request,
-      mode: "browser" as const
-    };
-    const target = provider.normalizeInput(normalizedRequest.input, normalizedRequest.mode);
+    const target = provider.normalizeInput(request.input);
     this.setStatus("loading", "Opening X timeline");
     this.logger.info("Navigating provider", {
       input: request.input,
-      resolvedUrl: target.resolvedUrl,
-      mode: normalizedRequest.mode
+      resolvedUrl: target.resolvedUrl
     });
 
     try {
-      this.destroyActiveView();
+      const previousView = this.activeView;
 
       const nextView = await provider.createView({
-        mode: normalizedRequest.mode,
         target,
         settings: appSettings,
         initialBounds: this.contentBounds as Rectangle,
         logger: this.logger
       });
 
+      if (navigationId !== this.navigationSequence) {
+        this.logger.warn("Discarding stale provider view after a newer navigation request");
+        nextView.destroy();
+        return this.buildState(this.settings.get());
+      }
+
       this.activeView = nextView;
+      this.activeSurface = nextView.surface;
       this.activeTarget = target;
       this.window.setBrowserView(nextView.view);
       this.applyBounds();
+      this.destroyView(previousView);
 
       const nextSettings = this.settings.update({
-        mode: normalizedRequest.mode,
         currentInput: target.input
       });
 
       this.initialized = true;
-      this.setStatus("ready", target.title);
+      if (nextView.surface === "bootstrap") {
+        this.setStatus("ready", "Desktop login helper");
+      } else {
+        this.setStatus("ready", target.title);
+      }
       const state = this.buildState(nextSettings);
       this.emit(state);
       return state;
     } catch (error) {
+      if (navigationId !== this.navigationSequence) {
+        return this.buildState(this.settings.get());
+      }
+
       const message = error instanceof Error ? error.message : "Unable to load provider";
       this.logger.error("Failed to navigate provider", { message });
       this.setStatus("error", message);
@@ -111,20 +125,9 @@ export class ProviderViewManager {
   }
 
   async updateSettings(patch: Partial<DockState["settings"]>): Promise<DockState> {
-    const previous = this.settings.get();
     const next = this.settings.update(patch);
     this.window.setAlwaysOnTop(next.alwaysOnTop, "floating");
     this.window.setOpacity(next.opacity);
-
-    if (
-      patch.xMobileEmulation !== undefined &&
-      patch.xMobileEmulation !== previous.xMobileEmulation
-    ) {
-      return this.navigate({
-        mode: next.mode,
-        input: this.activeTarget.input
-      });
-    }
 
     const state = this.buildState(next);
     this.emit(state);
@@ -132,6 +135,13 @@ export class ProviderViewManager {
   }
 
   setContentBounds(bounds: ViewBounds): void {
+    if (bounds.width < MIN_CONTENT_WIDTH || bounds.height < MIN_CONTENT_HEIGHT) {
+      this.logger.warn("Ignoring tiny content bounds update", {
+        bounds
+      });
+      return;
+    }
+
     this.contentBounds = bounds;
     this.applyBounds();
   }
@@ -161,16 +171,16 @@ export class ProviderViewManager {
     this.activeView.view.setBounds(bounds);
   }
 
-  private destroyActiveView(): void {
-    if (!this.activeView) {
+  private destroyView(view?: ProviderViewInstance): void {
+    if (!view) {
       return;
     }
 
-    if (this.window.getBrowserView() === this.activeView.view) {
+    if (this.window.getBrowserView() === view.view) {
       this.window.setBrowserView(null);
     }
-    this.activeView.destroy();
-    this.activeView = undefined;
+
+    view.destroy();
   }
 
   private setStatus(status: ProviderStatus, message: string): void {
@@ -184,6 +194,7 @@ export class ProviderViewManager {
       settings,
       providers: this.registry.list(),
       activeTarget: this.activeTarget,
+      activeSurface: this.activeSurface,
       status: this.status,
       statusMessage: this.statusMessage
     };

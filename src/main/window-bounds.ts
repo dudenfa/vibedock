@@ -2,7 +2,7 @@ import type { AppSettings } from "../shared/settings";
 
 type WindowBounds = AppSettings["windowBounds"];
 
-export interface WorkArea {
+interface WorkArea {
   x: number;
   y: number;
   width: number;

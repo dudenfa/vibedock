@@ -4,23 +4,19 @@ import { XProvider } from "../../src/main/providers/x";
 describe("XProvider", () => {
   const provider = new XProvider();
 
-  it("normalizes browser urls onto x.com", () => {
-    const target = provider.normalizeInput("twitter.com/home", "browser");
+  it("normalizes mobile web urls onto x.com", () => {
+    const target = provider.normalizeInput("twitter.com/home");
     expect(target.resolvedUrl).toBe("https://x.com/home");
   });
 
   it("falls back to the timeline home target for unsupported urls", () => {
-    const target = provider.normalizeInput("https://example.com", "browser");
-    expect(target.resolvedUrl).toBe(provider.buildHomeUrl("browser"));
+    const target = provider.normalizeInput("https://example.com");
+    expect(target.resolvedUrl).toBe(provider.buildHomeUrl());
   });
 
-  it("marks embed support as disabled", () => {
-    expect(provider.definition.capabilities.embed).toBe(false);
-  });
-
-  it("reuses the browser session for mobile mode", () => {
+  it("uses a stable isolated session partition", () => {
     expect(
-      provider.createSessionPartition("browser", {
+      provider.createSessionPartition({
         version: 1,
         windowBounds: {
           width: 420,
@@ -28,11 +24,9 @@ describe("XProvider", () => {
         },
         alwaysOnTop: true,
         opacity: 0.98,
-        theme: "system",
         providerId: "x",
-        mode: "browser",
         currentInput: "https://x.com/home",
-        xMobileEmulation: true,
+        xBootstrapCompleted: false,
         shortcut: "CommandOrControl+Shift+Space",
         restoreLastSession: true,
         startHidden: false,

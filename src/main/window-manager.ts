@@ -7,7 +7,12 @@ import { resolveWindowBounds } from "./window-bounds";
 
 export class WindowManager {
   private window?: BrowserWindow;
+  private settingsWindow?: BrowserWindow;
   private boundsSaveTimer?: NodeJS.Timeout;
+  private screenshotModeTimer?: NodeJS.Timeout;
+  private screenshotModeActive = false;
+  private screenshotModeWasVisible = false;
+  private screenshotSettingsWindowWasVisible = false;
 
   constructor(
     private readonly settings: SettingsService,
@@ -57,6 +62,20 @@ export class WindowManager {
       }
     });
 
+    window.on("focus", () => {
+      this.restoreAfterScreenshotMode();
+    });
+
+    window.on("closed", () => {
+      clearTimeout(this.boundsSaveTimer);
+      clearTimeout(this.screenshotModeTimer);
+      if (this.settingsWindow && !this.settingsWindow.isDestroyed()) {
+        this.settingsWindow.close();
+      }
+      this.settingsWindow = undefined;
+      this.window = undefined;
+    });
+
     this.window = window;
     return window;
   }
@@ -71,6 +90,12 @@ export class WindowManager {
 
   toggleVisibility(): void {
     const window = this.getWindow();
+    if (this.screenshotModeActive) {
+      this.restoreAfterScreenshotMode();
+      window.focus();
+      return;
+    }
+
     if (window.isVisible()) {
       window.hide();
       return;
@@ -78,6 +103,77 @@ export class WindowManager {
 
     window.show();
     window.focus();
+  }
+
+  beginScreenshotMode(durationMs = 8000): void {
+    const window = this.window;
+    if (!window) {
+      return;
+    }
+
+    clearTimeout(this.screenshotModeTimer);
+    this.screenshotModeWasVisible = window.isVisible();
+    this.screenshotSettingsWindowWasVisible = Boolean(
+      this.settingsWindow && !this.settingsWindow.isDestroyed() && this.settingsWindow.isVisible()
+    );
+    this.screenshotModeActive = true;
+
+    this.logger.info("Entering screenshot mode", {
+      durationMs
+    });
+    window.setAlwaysOnTop(false);
+    window.hide();
+    if (this.settingsWindow && !this.settingsWindow.isDestroyed()) {
+      this.settingsWindow.hide();
+    }
+
+    this.screenshotModeTimer = setTimeout(() => {
+      this.restoreAfterScreenshotMode();
+    }, durationMs);
+  }
+
+  openSettingsPanel(): BrowserWindow {
+    const parentWindow = this.getWindow();
+    if (this.settingsWindow && !this.settingsWindow.isDestroyed()) {
+      this.settingsWindow.show();
+      this.settingsWindow.focus();
+      return this.settingsWindow;
+    }
+
+    const settingsWindow = new BrowserWindow({
+      width: 420,
+      height: 660,
+      minWidth: 360,
+      minHeight: 520,
+      resizable: false,
+      maximizable: false,
+      minimizable: false,
+      frame: false,
+      transparent: false,
+      show: false,
+      title: "VibeDock Settings",
+      backgroundColor: "#050a16",
+      parent: parentWindow,
+      alwaysOnTop: true,
+      webPreferences: {
+        preload: this.getPreloadPath(),
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false
+      }
+    });
+
+    settingsWindow.setAlwaysOnTop(true, "floating");
+    settingsWindow.on("ready-to-show", () => {
+      settingsWindow.show();
+      settingsWindow.focus();
+    });
+    settingsWindow.on("closed", () => {
+      this.settingsWindow = undefined;
+    });
+
+    this.settingsWindow = settingsWindow;
+    return settingsWindow;
   }
 
   private getInitialBounds(settings: AppSettings): AppSettings["windowBounds"] {
@@ -116,5 +212,36 @@ export class WindowManager {
       this.settings.saveWindowBounds({ x, y, width, height });
       this.logger.info("Saved window bounds", { x, y, width, height });
     }, 180);
+  }
+
+  private restoreAfterScreenshotMode(): void {
+    if (!this.screenshotModeActive || !this.window) {
+      return;
+    }
+
+    clearTimeout(this.screenshotModeTimer);
+    if (this.screenshotModeWasVisible && !this.window.isVisible()) {
+      this.window.showInactive();
+    }
+    if (
+      this.screenshotSettingsWindowWasVisible &&
+      this.settingsWindow &&
+      !this.settingsWindow.isDestroyed() &&
+      !this.settingsWindow.isVisible()
+    ) {
+      this.settingsWindow.showInactive();
+    }
+
+    if (this.settings.get().alwaysOnTop) {
+      this.window.setAlwaysOnTop(true, "floating");
+    }
+    if (this.settingsWindow && !this.settingsWindow.isDestroyed()) {
+      this.settingsWindow.setAlwaysOnTop(true, "floating");
+    }
+
+    this.screenshotModeActive = false;
+    this.screenshotModeWasVisible = false;
+    this.screenshotSettingsWindowWasVisible = false;
+    this.logger.info("Restored dock after screenshot mode");
   }
 }

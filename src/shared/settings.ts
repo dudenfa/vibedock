@@ -1,7 +1,7 @@
 import { z } from "zod";
-import type { ProviderId, ProviderMode } from "./providers";
+import type { ProviderId } from "./providers";
 
-export const windowBoundsSchema = z.object({
+const windowBoundsSchema = z.object({
   width: z.number().min(320).max(1920),
   height: z.number().min(240).max(1440),
   x: z.number().optional(),
@@ -13,11 +13,9 @@ export const appSettingsSchema = z.object({
   windowBounds: windowBoundsSchema,
   alwaysOnTop: z.boolean(),
   opacity: z.number().min(0.7).max(1),
-  theme: z.enum(["system", "light", "dark"]),
   providerId: z.custom<ProviderId>((value) => value === "x"),
-  mode: z.custom<ProviderMode>((value) => value === "browser" || value === "embed"),
   currentInput: z.string().min(1),
-  xMobileEmulation: z.boolean(),
+  xBootstrapCompleted: z.boolean(),
   shortcut: z.string().min(1),
   restoreLastSession: z.boolean(),
   startHidden: z.boolean(),
@@ -34,11 +32,9 @@ export const defaultSettings: AppSettings = {
   },
   alwaysOnTop: true,
   opacity: 0.98,
-  theme: "system",
   providerId: "x",
-  mode: "browser",
   currentInput: "https://x.com/home",
-  xMobileEmulation: false,
+  xBootstrapCompleted: false,
   shortcut: "CommandOrControl+Shift+Space",
   restoreLastSession: true,
   startHidden: false,

@@ -38,7 +38,7 @@ describe("cleanupChromiumCaches", () => {
     cleanupChromiumCaches(root, new TestLogger() as never);
 
     expect(fs.existsSync(path.join(root, "Cache"))).toBe(false);
-    expect(fs.existsSync(path.join(root, "Shared Dictionary", "cache"))).toBe(false);
+    expect(fs.existsSync(path.join(root, "Shared Dictionary"))).toBe(false);
     expect(
       fs.existsSync(path.join(root, "Partitions", "vibedock", "provider", "x", "browser", "default", "Cache"))
     ).toBe(false);

@@ -8,6 +8,8 @@ const api: DockApi = {
   updateSettings: (patch: Partial<AppSettings>) => ipcRenderer.invoke(IPC_CHANNELS.updateSettings, patch),
   setContentBounds: (bounds: ViewBounds) => ipcRenderer.invoke(IPC_CHANNELS.setContentBounds, bounds),
   openExternal: (url: string) => ipcRenderer.invoke(IPC_CHANNELS.openExternal, url),
+  beginScreenshotMode: () => ipcRenderer.invoke(IPC_CHANNELS.beginScreenshotMode),
+  openSettingsPanel: () => ipcRenderer.invoke(IPC_CHANNELS.openSettingsPanel),
   onStateChange: (listener) => {
     const wrapped = (_event: Electron.IpcRendererEvent, state: Awaited<ReturnType<DockApi["getState"]>>) => {
       listener(state);
@@ -26,4 +28,3 @@ declare global {
     dock: DockApi;
   }
 }
-

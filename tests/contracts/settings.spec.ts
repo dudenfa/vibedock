@@ -15,12 +15,16 @@ describe("settings schema", () => {
     ).toThrow();
   });
 
-  it("accepts the mobile emulation toggle", () => {
-    expect(() =>
-      appSettingsSchema.parse({
-        ...defaultSettings,
-        xMobileEmulation: true
-      })
-    ).not.toThrow();
+  it("strips legacy browser-mode settings keys", () => {
+    const parsed = appSettingsSchema.parse({
+      ...defaultSettings,
+      theme: "system",
+      mode: "browser",
+      xMobileEmulation: true
+    });
+
+    expect(parsed).not.toHaveProperty("theme");
+    expect(parsed).not.toHaveProperty("mode");
+    expect(parsed).not.toHaveProperty("xMobileEmulation");
   });
 });

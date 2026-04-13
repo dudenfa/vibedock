@@ -15,11 +15,11 @@ const fallbackState: DockState = {
   providers: [],
   activeTarget: {
     providerId: "x",
-    mode: "browser",
     input: defaultSettings.currentInput,
     resolvedUrl: defaultSettings.currentInput,
     title: "X Timeline"
   },
+  activeSurface: defaultSettings.xBootstrapCompleted ? "mobile" : "bootstrap",
   status: "idle",
   statusMessage: "Booting"
 };
@@ -40,6 +40,7 @@ export const useAppStore = create<AppStore>((set) => ({
     set({ ...state, loading: false });
   },
   patchSettings: async (patch) => {
+    set({ loading: true });
     const state = await window.dock.updateSettings(patch);
     set({ ...state, loading: false });
   },
