@@ -18,36 +18,64 @@ class TestSettingsService {
   update(patch: Partial<AppSettings>): AppSettings {
     this.settings = {
       ...this.settings,
-      ...patch
+      ...patch,
+      providerTabs: patch.providerTabs
+        ? {
+            ...this.settings.providerTabs,
+            ...patch.providerTabs
+          }
+        : this.settings.providerTabs
     };
     return this.settings;
   }
 }
 
 class TestProviderRegistry {
-  private provider = {
-    definition: {
-      id: "x",
-      label: "X",
-      description: "X"
+  private providers = {
+    x: {
+      definition: {
+        id: "x",
+        label: "X",
+        description: "X"
+      },
+      buildHomeUrl: () => "https://x.com/home",
+      normalizeInput: (input: string) => ({
+        providerId: "x" as const,
+        input,
+        resolvedUrl: input,
+        title: "X Timeline"
+      }),
+      createSessionPartition: () => "persist:test:x",
+      createView: vi.fn(),
+      resolvePreferredSurface: vi.fn(),
+      shouldAutoPromoteBootstrap: undefined
     },
-    buildHomeUrl: () => "https://x.com/home",
-    normalizeInput: (input: string) => ({
-      providerId: "x" as const,
-      input,
-      resolvedUrl: input,
-      title: "X Timeline"
-    }),
-    createSessionPartition: () => "persist:test",
-    createView: vi.fn()
+    tiktok: {
+      definition: {
+        id: "tiktok",
+        label: "TikTok",
+        description: "TikTok"
+      },
+      buildHomeUrl: () => "https://www.tiktok.com/foryou",
+      normalizeInput: (input: string) => ({
+        providerId: "tiktok" as const,
+        input,
+        resolvedUrl: input,
+        title: "TikTok Feed"
+      }),
+      createSessionPartition: () => "persist:test:tiktok",
+      createView: vi.fn(),
+      resolvePreferredSurface: undefined,
+      shouldAutoPromoteBootstrap: undefined
+    }
   };
 
-  get() {
-    return this.provider;
+  get(providerId: "x" | "tiktok") {
+    return this.providers[providerId];
   }
 
   list() {
-    return [this.provider.definition];
+    return [this.providers.x.definition, this.providers.tiktok.definition];
   }
 }
 
@@ -99,44 +127,57 @@ describe("ProviderViewManager", () => {
     });
   });
 
-  it("keeps the current provider view mounted when the next navigation fails", async () => {
+  it("keeps a provider view alive when switching tabs", async () => {
     const manager = new ProviderViewManager(
       window as never,
       registry as never,
       settings as never,
       logger as never
     );
-    const currentView = {
-      view: { id: "current" },
+    const xView = {
+      view: { webContents: { isDestroyed: () => false, executeJavaScript: vi.fn() } },
       surface: "mobile" as const,
       destroy: vi.fn(),
       setBounds: vi.fn()
     };
+    const tikTokView = {
+      view: { webContents: { isDestroyed: () => false, executeJavaScript: vi.fn() } },
+      surface: "bootstrap" as const,
+      destroy: vi.fn(),
+      setBounds: vi.fn()
+    };
 
-    registry.get().createView.mockResolvedValueOnce(currentView);
-    window.getBrowserView.mockReturnValue(currentView.view);
+    registry.get("x").createView.mockResolvedValueOnce(xView);
+    registry.get("tiktok").createView.mockResolvedValueOnce(tikTokView);
 
     await manager.navigate({
+      providerId: "x",
       input: "https://x.com/home"
     });
 
-    registry.get().createView.mockRejectedValueOnce(new Error("boom"));
-
-    await manager.navigate({
-      input: "https://x.com/mobile"
+    await manager.activateProvider({
+      providerId: "tiktok"
     });
 
-    expect(window.setBrowserView).toHaveBeenCalledTimes(1);
-    expect(currentView.destroy).not.toHaveBeenCalled();
-    expect(logger.error).toHaveBeenCalledWith("Failed to navigate provider", {
-      message: "boom"
+    await manager.activateProvider({
+      providerId: "x"
     });
+
+    expect(xView.destroy).not.toHaveBeenCalled();
+    expect(window.setBrowserView).toHaveBeenCalled();
   });
 
-  it("reports bootstrap surface when the desktop login helper is active", async () => {
+  it("reports desktop web status for the active tiktok provider", async () => {
     settings = new TestSettingsService({
       ...defaultSettings,
-      xBootstrapCompleted: false
+      activeProviderId: "tiktok",
+      providerTabs: {
+        ...defaultSettings.providerTabs,
+        tiktok: {
+          currentInput: "https://www.tiktok.com/foryou",
+          bootstrapCompleted: false
+        }
+      }
     });
     const manager = new ProviderViewManager(
       window as never,
@@ -145,18 +186,63 @@ describe("ProviderViewManager", () => {
       logger as never
     );
     const bootstrapView = {
-      view: { id: "bootstrap" },
+      view: { webContents: { on: vi.fn(), isDestroyed: () => false } },
       surface: "bootstrap" as const,
       destroy: vi.fn(),
       setBounds: vi.fn()
     };
 
-    registry.get().createView.mockResolvedValueOnce(bootstrapView);
+    registry.get("tiktok").createView.mockResolvedValueOnce(bootstrapView);
 
     const state = await manager.navigate({
-      input: "https://x.com/home"
+      providerId: "tiktok",
+      input: "https://www.tiktok.com/foryou"
     });
 
+    expect(state.activeProviderId).toBe("tiktok");
+    expect(state.activeSurface).toBe("bootstrap");
+    expect(state.statusMessage).toBe("TikTok desktop web");
+  });
+
+  it("downgrades X to desktop web on startup when no authenticated session is detected", async () => {
+    settings = new TestSettingsService({
+      ...defaultSettings,
+      activeProviderId: "x",
+      providerTabs: {
+        ...defaultSettings.providerTabs,
+        x: {
+          currentInput: "https://x.com/home",
+          bootstrapCompleted: true
+        }
+      }
+    });
+
+    const manager = new ProviderViewManager(
+      window as never,
+      registry as never,
+      settings as never,
+      logger as never
+    );
+    const bootstrapView = {
+      view: { webContents: { on: vi.fn(), isDestroyed: () => false } },
+      surface: "bootstrap" as const,
+      destroy: vi.fn(),
+      setBounds: vi.fn()
+    };
+
+    registry.get("x").resolvePreferredSurface.mockResolvedValueOnce("bootstrap");
+    registry.get("x").createView.mockResolvedValueOnce(bootstrapView);
+
+    const state = await manager.activateProvider({
+      providerId: "x"
+    });
+
+    expect(registry.get("x").resolvePreferredSurface).toHaveBeenCalled();
+    expect(registry.get("x").createView).toHaveBeenCalledWith(
+      expect.objectContaining({
+        surface: "bootstrap"
+      })
+    );
     expect(state.activeSurface).toBe("bootstrap");
     expect(state.statusMessage).toBe("Desktop login helper");
   });

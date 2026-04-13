@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ProviderId, ProviderSurface } from "../shared/providers";
 import { useAppStore } from "./store";
 
 const panelKind = new URLSearchParams(window.location.search).get("panel") === "settings"
@@ -9,19 +10,64 @@ function getShortcutGlyph(): string {
   return navigator.platform.toLowerCase().includes("mac") ? "Cmd" : "Ctrl";
 }
 
+function getBootstrapSurfaceLabel(providerId: ProviderId): string {
+  return providerId === "tiktok" ? "Desktop web" : "Login helper";
+}
+
+function getBootstrapSurfaceDescription(providerId: ProviderId, providerLabel: string): string {
+  if (providerId === "tiktok") {
+    return `${providerLabel} works better as a desktop web timeline right now. Mobile web is still available in case you want to experiment with it.`;
+  }
+
+  return `Use the desktop login helper when auth gets picky, then return to the mobile feed view.`;
+}
+
+function getSurfaceDescription(
+  providerId: ProviderId,
+  providerLabel: string,
+  surface: ProviderSurface
+): string {
+  if (surface === "bootstrap") {
+    if (providerId === "tiktok") {
+      return `You are in the ${providerLabel} desktop web view. This is currently the recommended way to browse TikTok inside VibeDock.`;
+    }
+
+    return `You are in the ${providerLabel} desktop login helper. Finish logging in here, then return to the mobile web tab.`;
+  }
+
+  if (providerId === "tiktok") {
+    return `You are in the ${providerLabel} mobile web view. TikTok may still push the install-app experience here, so desktop web is usually more reliable.`;
+  }
+
+  return `You are in the ${providerLabel} mobile web timeline. If login ever stops working, reopen the desktop helper to refresh the session.`;
+}
+
+function getSurfaceToggleCopy(providerId: ProviderId, surface: ProviderSurface): string {
+  if (surface === "bootstrap") {
+    return providerId === "tiktok" ? "Switch to mobile web" : "Continue to mobile web";
+  }
+
+  return providerId === "tiktok" ? "Switch back to desktop web" : "Reopen desktop login helper";
+}
+
 function SettingsContent(props: {
+  activeProviderId: ProviderId;
+  activeProviderLabel: string;
   input: string;
   setInput: (value: string) => void;
   loading: boolean;
   statusMessage: string;
   activeTargetUrl: string;
-  activeSurface: "mobile" | "bootstrap";
+  activeSurface: ProviderSurface;
   settings: ReturnType<typeof useAppStore.getState>["settings"];
   navigate: ReturnType<typeof useAppStore.getState>["navigate"];
+  setProviderSurface: ReturnType<typeof useAppStore.getState>["setProviderSurface"];
   patchSettings: ReturnType<typeof useAppStore.getState>["patchSettings"];
   onClose?: () => void;
 }) {
   const {
+    activeProviderId,
+    activeProviderLabel,
     input,
     setInput,
     loading,
@@ -30,6 +76,7 @@ function SettingsContent(props: {
     activeSurface,
     settings,
     navigate,
+    setProviderSurface,
     patchSettings,
     onClose
   } = props;
@@ -37,16 +84,15 @@ function SettingsContent(props: {
 
   const submitNavigation = async () => {
     await navigate({
+      providerId: activeProviderId,
       input
     });
   };
 
-  const switchSurface = async (nextSurface: "mobile" | "bootstrap") => {
-    await patchSettings({
-      xBootstrapCompleted: nextSurface === "mobile"
-    });
-    await navigate({
-      input
+  const switchSurface = async (nextSurface: ProviderSurface) => {
+    await setProviderSurface({
+      providerId: activeProviderId,
+      surface: nextSurface
     });
     onClose?.();
   };
@@ -56,10 +102,10 @@ function SettingsContent(props: {
       <div className="mb-3 flex items-start justify-between gap-4">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">
-            Dock controls
+            {activeProviderLabel} controls
           </p>
           <p className="mt-1 text-sm text-white/88">
-            Sign in with the desktop helper once, then keep scrolling in the mobile web dock.
+            {getBootstrapSurfaceDescription(activeProviderId, activeProviderLabel)}
           </p>
         </div>
         {onClose ? (
@@ -90,7 +136,7 @@ function SettingsContent(props: {
           type="url"
           value={input}
           onChange={(event) => setInput(event.target.value)}
-          placeholder="Paste an x.com timeline or profile URL"
+          placeholder={`Paste a ${activeProviderLabel} URL`}
         />
         <button className="primary-button" type="submit" disabled={loading}>
           {loading ? "Loading…" : "Go"}
@@ -99,11 +145,9 @@ function SettingsContent(props: {
 
       <div className="mt-3 grid gap-3">
         <div className="setting-stack">
-          <span>Timeline view</span>
+          <span>{activeProviderLabel} view</span>
           <p className="text-xs leading-5 text-[var(--text-muted)]">
-            {activeSurface === "bootstrap"
-              ? "You are in the desktop login helper. Finish logging into X here, then switch back to mobile web."
-              : "You are in the mobile web timeline. If login ever stops working, reopen the desktop helper to refresh the session."}
+            {getSurfaceDescription(activeProviderId, activeProviderLabel, activeSurface)}
           </p>
           <div className="flex flex-wrap gap-2">
             {activeSurface === "bootstrap" ? (
@@ -114,7 +158,7 @@ function SettingsContent(props: {
                   void switchSurface("mobile");
                 }}
               >
-                Continue to mobile web
+                {getSurfaceToggleCopy(activeProviderId, "bootstrap")}
               </button>
             ) : (
               <button
@@ -124,7 +168,7 @@ function SettingsContent(props: {
                   void switchSurface("bootstrap");
                 }}
               >
-                Reopen desktop login helper
+                {getSurfaceToggleCopy(activeProviderId, "mobile")}
               </button>
             )}
           </div>
@@ -238,15 +282,18 @@ function SettingsContent(props: {
 function SettingsPanelView() {
   const {
     boot,
+    activeProviderId,
+    providers,
     activeTarget,
     activeSurface,
     settings,
     statusMessage,
     loading,
     navigate,
+    setProviderSurface,
     patchSettings
   } = useAppStore();
-  const [input, setInput] = useState(settings.currentInput);
+  const [input, setInput] = useState(settings.providerTabs[settings.activeProviderId].currentInput);
 
   useEffect(() => {
     void boot();
@@ -270,6 +317,8 @@ function SettingsPanelView() {
     };
   }, []);
 
+  const activeProvider = providers.find((provider) => provider.id === activeProviderId);
+
   return (
     <main className="settings-panel-page h-screen overflow-hidden bg-[var(--app-bg)] p-3 text-[var(--text-main)]">
       <section className="settings-window flex h-full flex-col overflow-hidden rounded-[30px] border border-white/10 bg-[var(--phone-body)] p-3 shadow-[0_32px_90px_rgba(2,6,23,0.44)]">
@@ -277,6 +326,8 @@ function SettingsPanelView() {
           <div className="drag-strip absolute inset-x-4 top-2 h-4 rounded-full" aria-hidden="true" />
           <div className="no-drag">
             <SettingsContent
+              activeProviderId={activeProviderId}
+              activeProviderLabel={activeProvider?.label ?? activeProviderId}
               input={input}
               setInput={setInput}
               loading={loading}
@@ -285,6 +336,7 @@ function SettingsPanelView() {
               activeSurface={activeSurface}
               settings={settings}
               navigate={navigate}
+              setProviderSurface={setProviderSurface}
               patchSettings={patchSettings}
               onClose={() => {
                 window.close();
@@ -301,11 +353,13 @@ function DockView() {
   const {
     boot,
     providers,
+    activeProviderId,
     activeTarget,
     activeSurface,
     status,
     statusMessage,
     loading,
+    activateProvider,
     setContentBounds
   } = useAppStore();
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -363,35 +417,51 @@ function DockView() {
     };
   }, [setContentBounds]);
 
-  const currentProvider = providers[0];
-  const surfaceLabel = activeSurface === "bootstrap" ? "Login helper" : "Mobile web";
+  const activeProvider = useMemo(
+    () => providers.find((provider) => provider.id === activeProviderId),
+    [activeProviderId, providers]
+  );
+  const surfaceLabel = activeSurface === "bootstrap"
+    ? getBootstrapSurfaceLabel(activeProviderId)
+    : "Mobile web";
   const surfaceMessage = activeSurface === "bootstrap"
-    ? "Finish login in this desktop helper, then open Settings and switch back to mobile web."
+    ? getSurfaceDescription(
+        activeProviderId,
+        activeProvider?.label ?? activeProviderId,
+        "bootstrap"
+      )
     : statusMessage;
 
   return (
     <main className="app-stage h-screen overflow-hidden bg-[var(--app-bg)] text-[var(--text-main)]">
       <div className="flex h-full items-center justify-center p-4">
         <section className="browser-shell drag-region flex h-full w-full max-w-[560px] flex-col overflow-hidden rounded-[36px] border border-white/10 bg-[var(--phone-body)] p-3 shadow-[0_40px_110px_rgba(2,6,23,0.58)]">
-          <header className="relative z-10 shrink-0 rounded-[28px] border border-white/8 bg-[var(--panel-bg-soft)] px-3 pb-3 pt-5">
+          <header className="relative z-10 shrink-0 rounded-[28px] border border-white/8 bg-[var(--panel-bg-soft)] px-3 pb-3 pt-4">
             <div className="drag-strip absolute inset-x-4 top-2 h-4 rounded-full" aria-hidden="true" />
 
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <div className="browser-chip">
-                  <span className={loading ? "status-dot status-dot-live" : "status-dot"} />
-                  <span>{currentProvider?.label ?? "X"}</span>
-                </div>
-                <div className="browser-chip browser-chip-muted">
-                  <span>{loading ? "Loading" : status}</span>
-                </div>
-                <div className="browser-chip browser-chip-accent">
-                  <span>{surfaceLabel}</span>
-                </div>
+            <div className="flex items-center gap-3">
+              <div className="provider-tabbar no-drag flex min-w-0 flex-1 items-end gap-2">
+                {providers.map((provider) => {
+                  const isActive = provider.id === activeProviderId;
+                  return (
+                    <button
+                      key={provider.id}
+                      className={`provider-tab ${isActive ? "provider-tab-active" : "provider-tab-idle"}`}
+                      type="button"
+                      onClick={() => {
+                        void activateProvider({
+                          providerId: provider.id
+                        });
+                      }}
+                    >
+                      <span className="provider-tab-label">{provider.label}</span>
+                    </button>
+                  );
+                })}
               </div>
 
               <button
-                className="control-icon no-drag"
+                className="control-icon no-drag shrink-0"
                 type="button"
                 onClick={() => {
                   void window.dock.openSettingsPanel();
@@ -411,7 +481,20 @@ function DockView() {
               </button>
             </div>
 
-            <p className="mt-3 max-w-[23rem] text-xs leading-5 text-[var(--text-muted)]">
+            <div className="mt-3 no-drag flex flex-wrap items-center gap-2">
+              <div className="browser-chip">
+                <span className={loading ? "status-dot status-dot-live" : "status-dot"} />
+                <span>{activeProvider?.label ?? activeProviderId}</span>
+              </div>
+              <div className="browser-chip browser-chip-muted">
+                <span>{loading ? "Loading" : status}</span>
+              </div>
+              <div className="browser-chip browser-chip-accent">
+                <span>{surfaceLabel}</span>
+              </div>
+            </div>
+
+            <p className="mt-3 max-w-[24rem] text-xs leading-5 text-[var(--text-muted)]">
               {surfaceMessage}
             </p>
           </header>
@@ -426,7 +509,7 @@ function DockView() {
                 <div className="mb-3 h-12 w-12 rounded-[16px] border border-white/10 bg-white/5" />
                 <p className="text-sm font-medium text-white/88">Timeline viewport</p>
                 <p className="mt-2 max-w-[15rem] text-xs leading-5 text-[var(--text-muted)]">
-                  This area becomes the live X session once the page mounts.
+                  This area becomes the live {activeProvider?.label ?? activeProviderId} session once the page mounts.
                 </p>
                 <p className="mt-3 text-[11px] uppercase tracking-[0.22em] text-white/40">
                   {activeTarget.resolvedUrl}

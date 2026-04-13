@@ -1,6 +1,13 @@
 import path from "node:path";
 import { app, BrowserWindow, ipcMain, shell } from "electron";
-import { IPC_CHANNELS, type DockState, type ProviderNavigationRequest, type ViewBounds } from "../shared/ipc";
+import {
+  IPC_CHANNELS,
+  type DockState,
+  type ProviderActivationRequest,
+  type ProviderNavigationRequest,
+  type ProviderSurfaceRequest,
+  type ViewBounds
+} from "../shared/ipc";
 import { Logger } from "./logger";
 import { ProviderRegistry } from "./provider-registry";
 import { ProviderViewManager } from "./provider-view-manager";
@@ -55,7 +62,11 @@ async function createApplication(): Promise<void> {
   shortcutService.register(settingsService.get().shortcut);
 
   providerViewManager.onStateChange((state) => {
-    window.webContents.send(IPC_CHANNELS.stateChanged, state);
+    for (const browserWindow of BrowserWindow.getAllWindows()) {
+      if (!browserWindow.isDestroyed()) {
+        browserWindow.webContents.send(IPC_CHANNELS.stateChanged, state);
+      }
+    }
   });
 
   wireIpc(window);
@@ -95,8 +106,16 @@ function wireIpc(window: BrowserWindow): void {
     return providerViewManager.getState();
   });
 
+  ipcMain.handle(IPC_CHANNELS.activateProvider, async (_event, request: ProviderActivationRequest) => {
+    return providerViewManager.activateProvider(request);
+  });
+
   ipcMain.handle(IPC_CHANNELS.navigate, async (_event, request: ProviderNavigationRequest) => {
     return providerViewManager.navigate(request);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.setProviderSurface, async (_event, request: ProviderSurfaceRequest) => {
+    return providerViewManager.setProviderSurface(request);
   });
 
   ipcMain.handle(IPC_CHANNELS.updateSettings, async (_event, patch) => {
@@ -143,7 +162,9 @@ function wireIpc(window: BrowserWindow): void {
 
   window.on("closed", () => {
     ipcMain.removeHandler(IPC_CHANNELS.getState);
+    ipcMain.removeHandler(IPC_CHANNELS.activateProvider);
     ipcMain.removeHandler(IPC_CHANNELS.navigate);
+    ipcMain.removeHandler(IPC_CHANNELS.setProviderSurface);
     ipcMain.removeHandler(IPC_CHANNELS.updateSettings);
     ipcMain.removeHandler(IPC_CHANNELS.setContentBounds);
     ipcMain.removeHandler(IPC_CHANNELS.openExternal);

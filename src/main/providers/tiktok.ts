@@ -1,91 +1,37 @@
-import { session } from "electron";
 import type { ProviderDefinition, ProviderResolvedTarget } from "../../shared/providers";
 import type { AppSettings } from "../../shared/settings";
 import { BaseProvider, type ProviderCreateViewOptions, type ProviderViewInstance } from "./base";
 
-const X_ALLOWED_HOSTS = [
-  "x.com",
-  "twitter.com",
-  "mobile.twitter.com",
-  "t.co",
-  "video.twimg.com",
-  "pbs.twimg.com",
-  "abs.twimg.com",
-  "platform.twitter.com"
+const TIKTOK_ALLOWED_HOSTS = [
+  "www.tiktok.com",
+  "tiktok.com",
+  "m.tiktok.com",
+  "vm.tiktok.com",
+  "vt.tiktok.com"
 ];
 
-const X_MOBILE_USER_AGENT =
+const TIKTOK_MOBILE_USER_AGENT =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) " +
   "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
 
-const X_TIMELINE_LAYOUT_CSS = `
-  html, body {
-    background: #000 !important;
-    overscroll-behavior-y: contain;
-  }
-
-  [data-testid="sidebarColumn"] {
-    display: none !important;
-  }
-
-  main[role="main"] > div {
-    justify-content: flex-start !important;
-  }
-
-  [data-testid="primaryColumn"] {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 100% !important;
-    border-right: none !important;
-    border-left: none !important;
-  }
-
-  body {
-    background: #000 !important;
-  }
-`;
-
-const X_ABORT_ERROR_CODE = -3;
-const X_LOAD_TIMEOUT_MS = 20000;
-const X_MOBILE_MAX_WIDTH = 430;
-const X_MOBILE_MIN_WIDTH = 390;
-const X_MOBILE_MIN_HEIGHT = 664;
-const X_MOBILE_MAX_HEIGHT = 932;
-const X_MOBILE_DEVICE_SCALE_FACTOR = 3;
-const X_AUTH_COOKIE_NAME = "auth_token";
-const X_BOOTSTRAP_DENYLIST = [
-  "/i/flow",
-  "/login",
-  "/signup",
-  "/account/access",
-  "/account/begin_password_reset",
-  "/account/login_challenge",
-  "/oauth"
-];
-const X_BOOTSTRAP_PROMOTION_PREFIXES = [
-  "/home",
-  "/notifications",
-  "/messages",
-  "/compose",
-  "/explore",
-  "/search",
-  "/bookmarks",
-  "/i/bookmarks",
-  "/i/lists",
-  "/i/communities"
-];
-
-const X_DEFINITION: ProviderDefinition = {
-  id: "x",
-  label: "X",
-  description: "Logged-in X mobile web timeline inside an isolated browser view."
+const TIKTOK_ABORT_ERROR_CODE = -3;
+const TIKTOK_LOAD_TIMEOUT_MS = 20000;
+const TIKTOK_MOBILE_MAX_WIDTH = 430;
+const TIKTOK_MOBILE_MIN_WIDTH = 390;
+const TIKTOK_MOBILE_MIN_HEIGHT = 664;
+const TIKTOK_MOBILE_MAX_HEIGHT = 932;
+const TIKTOK_MOBILE_DEVICE_SCALE_FACTOR = 3;
+const TIKTOK_DEFINITION: ProviderDefinition = {
+  id: "tiktok",
+  label: "TikTok",
+  description: "Logged-in TikTok mobile web feed inside an isolated browser view."
 };
 
-export class XProvider extends BaseProvider {
-  definition = X_DEFINITION;
+export class TikTokProvider extends BaseProvider {
+  definition = TIKTOK_DEFINITION;
 
   buildHomeUrl(): string {
-    return "https://x.com/home";
+    return "https://www.tiktok.com/foryou";
   }
 
   normalizeInput(input: string): ProviderResolvedTarget {
@@ -94,96 +40,47 @@ export class XProvider extends BaseProvider {
     try {
       const normalized = this.normalizeUrl(trimmed);
       return {
-        providerId: "x",
+        providerId: "tiktok",
         input: trimmed,
         resolvedUrl: normalized,
-        title: "X Timeline"
+        title: "TikTok Feed"
       };
     } catch {
       const fallback = this.buildHomeUrl();
       return {
-        providerId: "x",
+        providerId: "tiktok",
         input: fallback,
         resolvedUrl: fallback,
-        title: "X Timeline"
+        title: "TikTok Feed"
       };
     }
   }
 
   createSessionPartition(settings: AppSettings): string {
     void settings;
-    return "persist:vibedock/provider/x/browser/default";
-  }
-
-  async resolvePreferredSurface(
-    settings: AppSettings,
-    logger: ProviderCreateViewOptions["logger"]
-  ): Promise<"mobile" | "bootstrap"> {
-    const partition = this.createSessionPartition(settings);
-    try {
-      const electronSession = session.fromPartition(partition, { cache: false });
-      const cookies = await electronSession.cookies.get({});
-      const hasAuthenticatedSession = cookies.some((cookie) => {
-        if (cookie.name !== X_AUTH_COOKIE_NAME) {
-          return false;
-        }
-
-        const domain = (cookie.domain ?? "").toLowerCase();
-        return domain === "x.com" || domain === ".x.com" || domain === "twitter.com" || domain === ".twitter.com";
-      });
-
-      logger.info("Resolved X preferred startup surface", {
-        hasAuthenticatedSession,
-        preferredSurface: hasAuthenticatedSession ? "mobile" : "bootstrap"
-      });
-
-      return hasAuthenticatedSession ? "mobile" : "bootstrap";
-    } catch (error) {
-      logger.warn("Unable to inspect X session cookies for startup surface", {
-        message: error instanceof Error ? error.message : "unknown"
-      });
-      return "bootstrap";
-    }
-  }
-
-  shouldAutoPromoteBootstrap(url: string): boolean {
-    try {
-      const parsed = new URL(url);
-      if (!X_ALLOWED_HOSTS.includes(parsed.hostname)) {
-        return false;
-      }
-
-      const pathname = parsed.pathname.toLowerCase();
-      if (X_BOOTSTRAP_DENYLIST.some((blocked) => pathname.startsWith(blocked))) {
-        return false;
-      }
-
-      return X_BOOTSTRAP_PROMOTION_PREFIXES.some((prefix) => pathname.startsWith(prefix));
-    } catch {
-      return false;
-    }
+    return "persist:vibedock/provider/tiktok/browser/default";
   }
 
   async createView(options: ProviderCreateViewOptions): Promise<ProviderViewInstance> {
     const partition = this.createSessionPartition(options.settings);
     const surface = options.surface;
-    options.logger.info("Creating X browser view", {
+    options.logger.info("Creating TikTok browser view", {
       partition,
       resolvedUrl: options.target.resolvedUrl,
       surface
     });
 
-    const view = this.createIsolatedView(partition, options.logger, "x:browser");
+    const view = this.createIsolatedView(partition, options.logger, "tiktok:browser");
     if (surface === "bootstrap") {
-      options.logger.info("Starting X in desktop login helper mode");
-      options.logger.info("Applying initial X view bounds", {
+      options.logger.info("Starting TikTok in desktop login helper mode");
+      options.logger.info("Applying initial TikTok view bounds", {
         bounds: options.initialBounds
       });
       view.setBounds(options.initialBounds);
-      options.logger.info("Loading X URL", {
+      options.logger.info("Loading TikTok URL", {
         resolvedUrl: options.target.resolvedUrl
       });
-      await this.loadTimelineUrl(view, options);
+      await this.loadUrl(view, options);
       return {
         view,
         surface,
@@ -203,24 +100,21 @@ export class XProvider extends BaseProvider {
       }
     };
 
-    view.webContents.setUserAgent(X_MOBILE_USER_AGENT);
-
+    view.webContents.setUserAgent(TIKTOK_MOBILE_USER_AGENT);
     view.webContents.on("did-finish-load", () => {
       hasFinishedFirstLoad = true;
       void this.applyMobileBrowserOverrides(view, options.logger, view.getBounds());
-      this.applyLayoutCss(view, options);
     });
 
-    options.logger.info("Applying initial X view bounds", {
+    options.logger.info("Applying initial TikTok view bounds", {
       bounds: options.initialBounds
     });
     applyBounds(options.initialBounds);
 
-    options.logger.info("Loading X URL", {
+    options.logger.info("Loading TikTok URL", {
       resolvedUrl: options.target.resolvedUrl
     });
-    await this.loadTimelineUrl(view, options);
-    this.applyLayoutCss(view, options);
+    await this.loadUrl(view, options);
 
     return {
       view,
@@ -231,7 +125,7 @@ export class XProvider extends BaseProvider {
           try {
             view.webContents.debugger.detach();
           } catch {
-            options.logger.warn("Unable to detach X debugger session");
+            options.logger.warn("Unable to detach TikTok debugger session");
           }
         }
 
@@ -242,24 +136,14 @@ export class XProvider extends BaseProvider {
     };
   }
 
-  private applyLayoutCss(view: ProviderViewInstance["view"], options: ProviderCreateViewOptions): void {
-    if (view.webContents.isDestroyed()) {
-      return;
-    }
-
-    void view.webContents.insertCSS(X_TIMELINE_LAYOUT_CSS).catch(() => {
-      options.logger.warn("Unable to apply X timeline layout");
-    });
-  }
-
-  private async loadTimelineUrl(
+  private async loadUrl(
     view: ProviderViewInstance["view"],
     options: ProviderCreateViewOptions
   ): Promise<void> {
     const waitForMainFrameLoad = this.waitForMainFrameLoad(view, options);
     const loadUrl = view.webContents.loadURL(options.target.resolvedUrl).catch((error: Error) => {
       if (this.isAbortError(error)) {
-        options.logger.warn("X navigation was interrupted during handoff; waiting for the final page load", {
+        options.logger.warn("TikTok navigation was interrupted during handoff; waiting for the final page load", {
           resolvedUrl: options.target.resolvedUrl,
           message: error.message
         });
@@ -270,7 +154,7 @@ export class XProvider extends BaseProvider {
     });
 
     await Promise.all([waitForMainFrameLoad, loadUrl]);
-    options.logger.info("X timeline finished loading", {
+    options.logger.info("TikTok timeline finished loading", {
       resolvedUrl: view.webContents.getURL() || options.target.resolvedUrl
     });
   }
@@ -302,10 +186,7 @@ export class XProvider extends BaseProvider {
         reject(new Error(message));
       };
 
-      const onFinish = () => {
-        finish();
-      };
-
+      const onFinish = () => finish();
       const onFail = (
         _event: Electron.Event,
         errorCode: number,
@@ -317,8 +198,8 @@ export class XProvider extends BaseProvider {
           return;
         }
 
-        if (errorCode === X_ABORT_ERROR_CODE) {
-          options.logger.warn("X reported a provisional navigation abort; waiting for follow-up navigation", {
+        if (errorCode === TIKTOK_ABORT_ERROR_CODE) {
+          options.logger.warn("TikTok reported a provisional navigation abort; waiting for follow-up navigation", {
             errorCode,
             errorDescription,
             validatedURL
@@ -329,13 +210,10 @@ export class XProvider extends BaseProvider {
         fail(`${errorDescription} (${errorCode}) loading '${validatedURL}'`);
       };
 
-      const onDestroyed = () => {
-        fail("X view was destroyed before navigation completed");
-      };
-
+      const onDestroyed = () => fail("TikTok view was destroyed before navigation completed");
       const timeout = setTimeout(() => {
-        fail(`Timed out after ${X_LOAD_TIMEOUT_MS}ms waiting for X to finish loading`);
-      }, X_LOAD_TIMEOUT_MS);
+        fail(`Timed out after ${TIKTOK_LOAD_TIMEOUT_MS}ms waiting for TikTok to finish loading`);
+      }, TIKTOK_LOAD_TIMEOUT_MS);
 
       const cleanup = () => {
         clearTimeout(timeout);
@@ -365,20 +243,20 @@ export class XProvider extends BaseProvider {
     const metrics = this.getMobileMetrics(bounds);
 
     try {
-      logger.info("Applying X mobile browser overrides");
+      logger.info("Applying TikTok mobile browser overrides");
       if (!devtools.isAttached()) {
         devtools.attach("1.3");
       }
 
       await devtools.sendCommand("Emulation.setUserAgentOverride", {
-        userAgent: X_MOBILE_USER_AGENT,
+        userAgent: TIKTOK_MOBILE_USER_AGENT,
         acceptLanguage: "en-US,en;q=0.9",
         platform: "iPhone"
       });
       await devtools.sendCommand("Emulation.setDeviceMetricsOverride", {
         width: metrics.width,
         height: metrics.height,
-        deviceScaleFactor: X_MOBILE_DEVICE_SCALE_FACTOR,
+        deviceScaleFactor: TIKTOK_MOBILE_DEVICE_SCALE_FACTOR,
         mobile: true,
         screenWidth: metrics.width,
         screenHeight: metrics.height,
@@ -398,11 +276,11 @@ export class XProvider extends BaseProvider {
         enabled: true,
         configuration: "mobile"
       });
-      logger.info("Applied X mobile browser overrides", {
-        userAgent: X_MOBILE_USER_AGENT
+      logger.info("Applied TikTok mobile browser overrides", {
+        userAgent: TIKTOK_MOBILE_USER_AGENT
       });
     } catch (error) {
-      logger.warn("Unable to apply X mobile browser overrides", {
+      logger.warn("Unable to apply TikTok mobile browser overrides", {
         message: error instanceof Error ? error.message : "unknown"
       });
     }
@@ -411,9 +289,9 @@ export class XProvider extends BaseProvider {
   private getMobileMetrics(bounds: Electron.Rectangle): { width: number; height: number } {
     const safeWidth = Math.max(1, bounds.width);
     const safeHeight = Math.max(1, bounds.height);
-    const width = Math.max(X_MOBILE_MIN_WIDTH, Math.min(safeWidth, X_MOBILE_MAX_WIDTH));
+    const width = Math.max(TIKTOK_MOBILE_MIN_WIDTH, Math.min(safeWidth, TIKTOK_MOBILE_MAX_WIDTH));
     const proportionalHeight = Math.round((safeHeight / safeWidth) * width);
-    const height = Math.max(X_MOBILE_MIN_HEIGHT, Math.min(proportionalHeight, X_MOBILE_MAX_HEIGHT));
+    const height = Math.max(TIKTOK_MOBILE_MIN_HEIGHT, Math.min(proportionalHeight, TIKTOK_MOBILE_MAX_HEIGHT));
     return { width, height };
   }
 
@@ -421,11 +299,11 @@ export class XProvider extends BaseProvider {
     const candidate = input.startsWith("http") ? input : `https://${input}`;
     const parsed = new URL(candidate);
 
-    if (!X_ALLOWED_HOSTS.includes(parsed.hostname)) {
+    if (!TIKTOK_ALLOWED_HOSTS.includes(parsed.hostname)) {
       return this.buildHomeUrl();
     }
 
-    const pathname = !parsed.pathname || parsed.pathname === "/" ? "/home" : parsed.pathname;
-    return `https://x.com${pathname}${parsed.search}${parsed.hash}`;
+    const pathname = !parsed.pathname || parsed.pathname === "/" ? "/foryou" : parsed.pathname;
+    return `https://www.tiktok.com${pathname}${parsed.search}${parsed.hash}`;
   }
 }

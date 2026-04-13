@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { XProvider } from "../../src/main/providers/x";
+import { defaultSettings } from "../../src/shared/settings";
 
 describe("XProvider", () => {
   const provider = new XProvider();
@@ -14,24 +15,14 @@ describe("XProvider", () => {
     expect(target.resolvedUrl).toBe(provider.buildHomeUrl());
   });
 
+  it("auto-promotes only authenticated X destinations", () => {
+    expect(provider.shouldAutoPromoteBootstrap?.("https://x.com/home")).toBe(true);
+    expect(provider.shouldAutoPromoteBootstrap?.("https://x.com/notifications")).toBe(true);
+    expect(provider.shouldAutoPromoteBootstrap?.("https://x.com/i/flow/login")).toBe(false);
+    expect(provider.shouldAutoPromoteBootstrap?.("https://x.com/OpenAI")).toBe(false);
+  });
+
   it("uses a stable isolated session partition", () => {
-    expect(
-      provider.createSessionPartition({
-        version: 1,
-        windowBounds: {
-          width: 420,
-          height: 680
-        },
-        alwaysOnTop: true,
-        opacity: 0.98,
-        providerId: "x",
-        currentInput: "https://x.com/home",
-        xBootstrapCompleted: false,
-        shortcut: "CommandOrControl+Shift+Space",
-        restoreLastSession: true,
-        startHidden: false,
-        launchAtLogin: false
-      })
-    ).toContain("/default");
+    expect(provider.createSessionPartition(defaultSettings)).toContain("/default");
   });
 });

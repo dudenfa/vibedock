@@ -1,5 +1,6 @@
 import type { ProviderId } from "../shared/providers";
 import type { ProviderAdapter } from "./providers/base";
+import { TikTokProvider } from "./providers/tiktok";
 import { XProvider } from "./providers/x";
 
 export class ProviderRegistry {
@@ -7,7 +8,11 @@ export class ProviderRegistry {
 
   constructor() {
     const x = new XProvider();
-    this.providers = new Map([[x.definition.id, x]]);
+    const tiktok = new TikTokProvider();
+    this.providers = new Map<ProviderId, ProviderAdapter>([
+      [x.definition.id, x],
+      [tiktok.definition.id, tiktok]
+    ]);
   }
 
   get(providerId: ProviderId): ProviderAdapter {
@@ -23,4 +28,3 @@ export class ProviderRegistry {
     return [...this.providers.values()].map((provider) => provider.definition);
   }
 }
-

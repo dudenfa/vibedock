@@ -1,24 +1,25 @@
 import fs from "node:fs";
 import path from "node:path";
 import { app } from "electron";
-import { appSettingsSchema, defaultSettings, type AppSettings } from "../shared/settings";
+import {
+  defaultSettings,
+  normalizeStoredSettings,
+  type AppSettings
+} from "../shared/settings";
+import type { ProviderId } from "../shared/providers";
 import { Logger } from "./logger";
 
-const X_PARTITION_STORAGE_PATH = path.join(
-  "Partitions",
-  "vibedock",
-  "provider",
-  "x",
-  "browser",
-  "default"
-);
-const X_SESSION_ARTIFACTS = [
+const SESSION_ARTIFACTS = [
   "Cookies",
   "Local Storage",
   "Session Storage",
   "IndexedDB",
   "Network"
 ];
+const PROVIDER_PARTITION_STORAGE_PATHS: Record<ProviderId, string> = {
+  x: path.join("Partitions", "vibedock", "provider", "x", "browser", "default"),
+  tiktok: path.join("Partitions", "vibedock", "provider", "tiktok", "browser", "default")
+};
 
 export class SettingsService {
   private readonly filePath: string;
@@ -34,11 +35,7 @@ export class SettingsService {
   }
 
   update(patch: Partial<AppSettings>): AppSettings {
-    const next = appSettingsSchema.parse({
-      ...this.settings,
-      ...patch,
-      version: 1
-    });
+    const next = normalizeStoredSettings(this.mergePatch(this.settings, patch));
 
     this.settings = next;
     this.persist();
@@ -46,7 +43,7 @@ export class SettingsService {
   }
 
   saveWindowBounds(bounds: AppSettings["windowBounds"]): void {
-    this.settings = appSettingsSchema.parse({
+    this.settings = normalizeStoredSettings({
       ...this.settings,
       windowBounds: bounds
     });
@@ -61,11 +58,8 @@ export class SettingsService {
       }
 
       const raw = fs.readFileSync(this.filePath, "utf8");
-      const parsedRaw = JSON.parse(raw) as Partial<AppSettings> & Record<string, unknown>;
-      return appSettingsSchema.parse({
-        ...defaultSettings,
-        xBootstrapCompleted: this.resolveBootstrapCompletion(parsedRaw),
-        ...parsedRaw
+      return normalizeStoredSettings(JSON.parse(raw), {
+        hasPersistedXSessionArtifacts: this.resolveBootstrapCompletion("x")
       });
     } catch (error) {
       this.logger.warn("Falling back to default settings", {
@@ -86,13 +80,46 @@ export class SettingsService {
     fs.writeFileSync(this.filePath, `${JSON.stringify(this.settings, null, 2)}\n`, "utf8");
   }
 
-  private resolveBootstrapCompletion(raw: Partial<AppSettings> & Record<string, unknown>): boolean {
-    if (typeof raw.xBootstrapCompleted === "boolean") {
-      return raw.xBootstrapCompleted;
+  private mergePatch(current: AppSettings, patch: Partial<AppSettings>): Record<string, unknown> {
+    const activeProviderId = patch.activeProviderId ?? current.activeProviderId;
+    const providerTabs = {
+      x: {
+        ...current.providerTabs.x
+      },
+      tiktok: {
+        ...current.providerTabs.tiktok
+      }
+    };
+
+    if (patch.providerTabs?.x) {
+      providerTabs.x = {
+        ...providerTabs.x,
+        ...patch.providerTabs.x
+      };
     }
 
-    const partitionPath = path.join(app.getPath("userData"), X_PARTITION_STORAGE_PATH);
-    const hasPersistedSessionArtifacts = X_SESSION_ARTIFACTS.some((entry) => {
+    if (patch.providerTabs?.tiktok) {
+      providerTabs.tiktok = {
+        ...providerTabs.tiktok,
+        ...patch.providerTabs.tiktok
+      };
+    }
+
+    return {
+      ...current,
+      ...patch,
+      version: 2,
+      activeProviderId,
+      providerTabs
+    };
+  }
+
+  private resolveBootstrapCompletion(providerId: ProviderId): boolean {
+    const partitionPath = path.join(
+      app.getPath("userData"),
+      PROVIDER_PARTITION_STORAGE_PATHS[providerId]
+    );
+    const hasPersistedSessionArtifacts = SESSION_ARTIFACTS.some((entry) => {
       const artifactPath = path.join(partitionPath, entry);
       try {
         if (!fs.existsSync(artifactPath)) {
@@ -107,7 +134,9 @@ export class SettingsService {
     });
 
     if (hasPersistedSessionArtifacts) {
-      this.logger.info("Detected persisted X session artifacts; defaulting to mobile web mode");
+      this.logger.info("Detected persisted provider session artifacts; defaulting to mobile web mode", {
+        providerId
+      });
     }
 
     return hasPersistedSessionArtifacts;

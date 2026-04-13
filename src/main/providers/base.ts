@@ -7,6 +7,7 @@ import { applySessionSecurity } from "../security";
 export interface ProviderCreateViewOptions {
   target: ProviderResolvedTarget;
   settings: AppSettings;
+  surface: ProviderSurface;
   initialBounds: Rectangle;
   logger: Logger;
 }
@@ -24,6 +25,11 @@ export interface ProviderAdapter {
   normalizeInput(input: string): ProviderResolvedTarget;
   createSessionPartition(settings: AppSettings): string;
   createView(options: ProviderCreateViewOptions): Promise<ProviderViewInstance>;
+  resolvePreferredSurface?: (
+    settings: AppSettings,
+    logger: Logger
+  ) => Promise<ProviderSurface | undefined>;
+  shouldAutoPromoteBootstrap?: (url: string) => boolean;
 }
 
 export abstract class BaseProvider implements ProviderAdapter {
