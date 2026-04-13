@@ -23,10 +23,6 @@ const X_TIMELINE_LAYOUT_CSS = `
     overscroll-behavior-y: contain;
   }
 
-  header[role="banner"] {
-    display: none !important;
-  }
-
   [data-testid="sidebarColumn"] {
     display: none !important;
   }
