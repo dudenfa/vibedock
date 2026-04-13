@@ -126,6 +126,10 @@ function wireIpc(window: BrowserWindow): void {
     const state = await providerViewManager.updateSettings(patch);
     shortcutService.register(state.settings.shortcut);
 
+    if (patch.windowSizePreset) {
+      windowManager.applyWindowSizePreset(state.settings.windowSizePreset);
+    }
+
     if (
       process.platform === "darwin" &&
       app.isPackaged &&

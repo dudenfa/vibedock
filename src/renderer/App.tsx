@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderId, ProviderSurface } from "../shared/providers";
+import { WINDOW_SIZE_PRESETS, type WindowSizePreset } from "../shared/window-size";
 import { useAppStore } from "./store";
 
 const panelKind = new URLSearchParams(window.location.search).get("panel") === "settings"
@@ -10,20 +11,20 @@ function getShortcutGlyph(): string {
   return navigator.platform.toLowerCase().includes("mac") ? "Cmd" : "Ctrl";
 }
 
-function getBootstrapSurfaceLabel(providerId: ProviderId): string {
-  return providerId === "x" ? "Login helper" : "Desktop web";
+function getShellPresetClass(windowSizePreset: WindowSizePreset): string {
+  return `shell-size-${windowSizePreset}`;
 }
 
 function getBootstrapSurfaceDescription(providerId: ProviderId, providerLabel: string): string {
   if (providerId === "x") {
-    return `Use the desktop login helper when auth gets picky, then return to the mobile feed view.`;
+    return "Use the desktop login helper when auth gets picky, then return to the mobile feed view.";
   }
 
   if (providerId === "tiktok") {
-    return `${providerLabel} works better as a desktop web timeline right now. Mobile web is still available in case you want to experiment with it.`;
+    return `${providerLabel} works better as a desktop web timeline right now. Mobile web stays available if you want to compare surfaces.`;
   }
 
-  return `${providerLabel} now runs directly in mobile web inside VibeDock.`;
+  return `${providerLabel} runs directly in mobile web inside VibeDock.`;
 }
 
 function getSurfaceDescription(
@@ -33,18 +34,18 @@ function getSurfaceDescription(
 ): string {
   if (surface === "bootstrap") {
     if (providerId === "x") {
-      return `You are in the ${providerLabel} desktop login helper. Finish logging in here, then return to the mobile web tab.`;
+      return `You are in the ${providerLabel} desktop login helper. Finish logging in here, then return to mobile web.`;
     }
 
     if (providerId === "tiktok") {
-      return `You are in the ${providerLabel} desktop web view. This is currently the recommended way to browse TikTok inside VibeDock.`;
+      return `You are in the ${providerLabel} desktop web view. This is the recommended way to browse TikTok inside VibeDock.`;
     }
 
-    return `You are in the ${providerLabel} desktop web view. This is the recommended way to browse Instagram inside VibeDock.`;
+    return `You are in the ${providerLabel} mobile web view.`;
   }
 
   if (providerId === "x") {
-    return `You are in the ${providerLabel} mobile web timeline. If login ever stops working, reopen the desktop helper to refresh the session.`;
+    return `You are in the ${providerLabel} mobile web timeline. If login stops working, reopen the desktop helper to refresh the session.`;
   }
 
   if (providerId === "tiktok") {
@@ -113,29 +114,36 @@ function SettingsContent(props: {
 
   return (
     <div className="settings-stack">
-      <div className="mb-3 flex items-start justify-between gap-4">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">
-            {activeProviderLabel} controls
-          </p>
-          <p className="mt-1 text-sm text-white/88">
-            {getBootstrapSurfaceDescription(activeProviderId, activeProviderLabel)}
-          </p>
+      <div>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">
+          {activeProviderLabel} controls
+        </p>
+        <p className="mt-1 text-sm text-white/80">
+          {getBootstrapSurfaceDescription(activeProviderId, activeProviderLabel)}
+        </p>
+      </div>
+
+      <div className="setting-stack">
+        <span>Screen size</span>
+        <p className="text-xs leading-5 text-[var(--text-muted)]">
+          Choose small, medium, or big. The preset keeps the floating screen tuned for each provider.
+        </p>
+        <div className="preset-group">
+          {(Object.entries(WINDOW_SIZE_PRESETS) as Array<[WindowSizePreset, (typeof WINDOW_SIZE_PRESETS)[WindowSizePreset]]>).map(
+            ([preset, meta]) => (
+              <button
+                key={preset}
+                className={`preset-button ${settings.windowSizePreset === preset ? "preset-button-active" : ""}`}
+                type="button"
+                onClick={() => {
+                  void patchSettings({ windowSizePreset: preset });
+                }}
+              >
+                <span>{meta.label}</span>
+              </button>
+            )
+          )}
         </div>
-        {onClose ? (
-          <button className="control-icon no-drag" type="button" onClick={onClose} aria-label="Close settings">
-            <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4">
-              <path
-                d="m6 6 12 12M18 6 6 18"
-                fill="none"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="1.8"
-              />
-            </svg>
-          </button>
-        ) : null}
       </div>
 
       <form
@@ -344,31 +352,51 @@ function SettingsPanelView() {
   const activeProvider = providers.find((provider) => provider.id === activeProviderId);
 
   return (
-    <main className="settings-panel-page h-screen overflow-hidden bg-[var(--app-bg)] p-3 text-[var(--text-main)]">
-      <section className="settings-window flex h-full flex-col overflow-hidden rounded-[30px] border border-white/10 bg-[var(--phone-body)] p-3 shadow-[0_32px_90px_rgba(2,6,23,0.44)]">
-        <header className="drag-region relative mb-3 rounded-[24px] border border-white/8 bg-[var(--panel-bg-soft)] px-4 py-3">
-          <div className="drag-strip absolute inset-x-4 top-2 h-4 rounded-full" aria-hidden="true" />
-          <div className="no-drag">
-            <SettingsContent
-              activeProviderId={activeProviderId}
-              activeProviderLabel={activeProvider?.label ?? activeProviderId}
-              input={input}
-              setInput={setInput}
-              loading={loading}
-              statusMessage={statusMessage}
-              activeTargetUrl={activeTarget.resolvedUrl}
-              activeSurface={activeSurface}
-              settings={settings}
-              navigate={navigate}
-              reloadActiveProvider={reloadActiveProvider}
-              setProviderSurface={setProviderSurface}
-              patchSettings={patchSettings}
-              onClose={() => {
-                window.close();
-              }}
-            />
+    <main className={`settings-panel-page h-screen overflow-hidden bg-[var(--app-bg)] p-2.5 text-[var(--text-main)] ${getShellPresetClass(settings.windowSizePreset)}`}>
+      <section className="settings-window flex h-full min-h-0 flex-col overflow-hidden rounded-[26px] border border-white/8 bg-[var(--phone-body)] p-2.5 shadow-[0_30px_90px_rgba(0,0,0,0.55)]">
+        <header className="drag-region settings-titlebar relative shrink-0 rounded-[18px] border border-white/6 bg-[var(--panel-bg-soft)] px-3 py-2.5">
+          <div className="drag-strip absolute inset-x-4 top-1.5 h-3 rounded-full" aria-hidden="true" />
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[var(--text-muted)]">
+                Settings
+              </p>
+              <p className="mt-1 text-sm text-white/80">
+                Move this panel anywhere, then scroll through the controls.
+              </p>
+            </div>
+            <button className="control-icon control-icon-compact no-drag" type="button" onClick={() => { window.close(); }} aria-label="Close settings">
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4">
+                <path
+                  d="m6 6 12 12M18 6 6 18"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.8"
+                />
+              </svg>
+            </button>
           </div>
         </header>
+
+        <div className="no-drag mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
+          <SettingsContent
+            activeProviderId={activeProviderId}
+            activeProviderLabel={activeProvider?.label ?? activeProviderId}
+            input={input}
+            setInput={setInput}
+            loading={loading}
+            statusMessage={statusMessage}
+            activeTargetUrl={activeTarget.resolvedUrl}
+            activeSurface={activeSurface}
+            settings={settings}
+            navigate={navigate}
+            reloadActiveProvider={reloadActiveProvider}
+            setProviderSurface={setProviderSurface}
+            patchSettings={patchSettings}
+          />
+        </div>
       </section>
     </main>
   );
@@ -380,10 +408,7 @@ function DockView() {
     providers,
     activeProviderId,
     activeTarget,
-    activeSurface,
-    status,
-    statusMessage,
-    loading,
+    settings,
     activateProvider,
     reloadActiveProvider,
     setContentBounds
@@ -453,27 +478,16 @@ function DockView() {
     () => providers.find((provider) => provider.id === activeProviderId),
     [activeProviderId, providers]
   );
-  const isBusy = loading || status === "loading";
-  const surfaceLabel = activeSurface === "bootstrap"
-    ? getBootstrapSurfaceLabel(activeProviderId)
-    : "Mobile web";
-  const surfaceMessage = activeSurface === "bootstrap"
-    ? getSurfaceDescription(
-        activeProviderId,
-        activeProvider?.label ?? activeProviderId,
-        "bootstrap"
-      )
-    : statusMessage;
 
   return (
-    <main className="app-stage h-screen overflow-hidden bg-[var(--app-bg)] text-[var(--text-main)]">
-      <div className="flex h-full items-center justify-center p-4">
-        <section className="browser-shell drag-region flex h-full w-full max-w-[560px] flex-col overflow-hidden rounded-[36px] border border-white/10 bg-[var(--phone-body)] p-3 shadow-[0_40px_110px_rgba(2,6,23,0.58)]">
-          <header className="relative z-10 shrink-0 rounded-[28px] border border-white/8 bg-[var(--panel-bg-soft)] px-3 pb-3 pt-4">
-            <div className="drag-strip absolute inset-x-4 top-2 h-4 rounded-full" aria-hidden="true" />
+    <main className={`app-stage h-screen overflow-hidden bg-[var(--app-bg)] text-[var(--text-main)] ${getShellPresetClass(settings.windowSizePreset)}`}>
+      <div className="flex h-full items-center justify-center p-2.5 sm:p-3">
+        <section className="browser-shell drag-region flex h-full w-full max-w-[min(98vw,1700px)] flex-col overflow-hidden rounded-[26px] border border-white/8 bg-[var(--phone-body)] p-1.5 shadow-[0_30px_100px_rgba(0,0,0,0.6)]">
+          <header className="relative z-10 shrink-0 rounded-[18px] border border-white/6 bg-[var(--panel-bg-soft)] px-2 py-2">
+            <div className="drag-strip absolute inset-x-4 top-1.5 h-3 rounded-full" aria-hidden="true" />
 
-            <div className="flex items-center gap-3">
-              <div className="provider-tabbar no-drag flex min-w-0 flex-1 items-end gap-2">
+            <div className="flex items-center gap-2">
+              <div className="provider-tabbar no-drag flex min-w-0 flex-1 items-center gap-1.5">
                 {providers.map((provider) => {
                   const isActive = provider.id === activeProviderId;
                   return (
@@ -494,7 +508,7 @@ function DockView() {
               </div>
 
               <button
-                className="control-icon no-drag shrink-0"
+                className="control-icon control-icon-compact no-drag shrink-0"
                 type="button"
                 onClick={() => {
                   void window.dock.openSettingsPanel();
@@ -513,40 +527,21 @@ function DockView() {
                 </svg>
               </button>
             </div>
-
-            <div className="mt-3 no-drag flex flex-wrap items-center gap-2">
-              <div className="browser-chip">
-                <span className={isBusy ? "status-spinner" : "status-dot"} />
-                <span>{activeProvider?.label ?? activeProviderId}</span>
-              </div>
-              <div className="browser-chip browser-chip-muted">
-                <span>{isBusy ? "Loading" : status}</span>
-              </div>
-              <div className="browser-chip browser-chip-accent">
-                <span>{surfaceLabel}</span>
-              </div>
-            </div>
-
-            <p className="mt-3 max-w-[24rem] text-xs leading-5 text-[var(--text-muted)]">
-              {surfaceMessage}
-            </p>
           </header>
 
-          <section className="relative mt-3 min-h-0 flex-1 rounded-[32px] p-2">
-            <div className="browser-outline pointer-events-none absolute inset-0 rounded-[30px]" />
+          <section className="relative mt-1.5 min-h-0 flex-1 rounded-[22px] p-0.5">
+            <div className="browser-outline pointer-events-none absolute inset-0 rounded-[22px]" />
             <div
               ref={contentRef}
-              className="content-shell no-drag relative h-full overflow-hidden rounded-[30px] border border-white/8 bg-[#050c19]"
+              className="content-shell no-drag relative h-full overflow-hidden rounded-[20px] border border-white/6 bg-[#050505]"
             >
               <div className="pointer-events-none flex h-full flex-col items-center justify-center px-6 text-center">
-                <div className="mb-3 h-12 w-12 rounded-[16px] border border-white/10 bg-white/5" />
-                <p className="text-sm font-medium text-white/88">Timeline viewport</p>
-                <p className="mt-2 max-w-[15rem] text-xs leading-5 text-[var(--text-muted)]">
+                <div className="mb-3 h-10 w-10 rounded-[14px] border border-white/10 bg-white/5" />
+                <p className="text-sm font-medium text-white/90">Live provider screen</p>
+                <p className="mt-2 max-w-[16rem] text-xs leading-5 text-[var(--text-muted)]">
                   This area becomes the live {activeProvider?.label ?? activeProviderId} session once the page mounts.
                 </p>
-                <p className="mt-3 text-[11px] uppercase tracking-[0.22em] text-white/40">
-                  {activeTarget.resolvedUrl}
-                </p>
+                <p className="mt-3 text-[10px] uppercase tracking-[0.28em] text-white/36">{activeTarget.resolvedUrl}</p>
               </div>
             </div>
           </section>

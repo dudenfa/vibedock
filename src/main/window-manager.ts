@@ -1,6 +1,11 @@
 import path from "node:path";
 import { BrowserWindow, screen } from "electron";
 import type { AppSettings } from "../shared/settings";
+import {
+  DEFAULT_WINDOW_SIZE_PRESET,
+  WINDOW_SIZE_PRESETS,
+  type WindowSizePreset
+} from "../shared/window-size";
 import { Logger } from "./logger";
 import { SettingsService } from "./settings";
 import { resolveWindowBounds } from "./window-bounds";
@@ -27,6 +32,8 @@ export class WindowManager {
       ...bounds,
       minWidth: 360,
       minHeight: 420,
+      resizable: false,
+      maximizable: false,
       frame: false,
       transparent: false,
       show: !appSettings.startHidden,
@@ -176,11 +183,26 @@ export class WindowManager {
     return settingsWindow;
   }
 
+  applyWindowSizePreset(preset: WindowSizePreset): void {
+    const window = this.window;
+    if (!window) {
+      return;
+    }
+
+    const targetPreset = WINDOW_SIZE_PRESETS[preset] ?? WINDOW_SIZE_PRESETS[DEFAULT_WINDOW_SIZE_PRESET];
+    window.setSize(targetPreset.width, targetPreset.height, true);
+  }
+
   private getInitialBounds(settings: AppSettings): AppSettings["windowBounds"] {
+    const sizePreset = WINDOW_SIZE_PRESETS[settings.windowSizePreset] ?? WINDOW_SIZE_PRESETS[DEFAULT_WINDOW_SIZE_PRESET];
     const primaryWorkArea = screen.getPrimaryDisplay().workArea;
     const workAreas = screen.getAllDisplays().map((display) => display.workArea);
     const { bounds, recoveredFromOffscreen } = resolveWindowBounds({
-      savedBounds: settings.windowBounds,
+      savedBounds: {
+        ...settings.windowBounds,
+        width: sizePreset.width,
+        height: sizePreset.height
+      },
       primaryWorkArea,
       workAreas,
       minWidth: 360,

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ProviderId } from "./providers";
+import { DEFAULT_WINDOW_SIZE_PRESET } from "./window-size";
 
 export const windowBoundsSchema = z.object({
   width: z.number().min(320).max(1920),
@@ -20,12 +21,14 @@ const providerTabsSchema = z.object({
 });
 
 const providerIdSchema = z.enum(["x", "tiktok", "instagram"]);
+const windowSizePresetSchema = z.enum(["small", "medium", "big"]);
 
 export const appSettingsSchema = z.object({
   version: z.literal(2),
   windowBounds: windowBoundsSchema,
   alwaysOnTop: z.boolean(),
   opacity: z.number().min(0.7).max(1),
+  windowSizePreset: windowSizePresetSchema,
   activeProviderId: providerIdSchema,
   providerTabs: providerTabsSchema,
   providerId: providerIdSchema,
@@ -52,6 +55,7 @@ const legacySettingsSchema = z.object({
   windowBounds: windowBoundsSchema.partial().optional(),
   alwaysOnTop: z.boolean().optional(),
   opacity: z.number().min(0.7).max(1).optional(),
+  windowSizePreset: windowSizePresetSchema.optional(),
   providerId: z.literal("x").optional(),
   currentInput: z.string().min(1).optional(),
   xBootstrapCompleted: z.boolean().optional(),
@@ -101,6 +105,7 @@ function buildDefaultSettings(): AppSettings {
     },
     alwaysOnTop: true,
     opacity: 0.98,
+    windowSizePreset: DEFAULT_WINDOW_SIZE_PRESET,
     activeProviderId: "x",
     providerTabs: createDefaultProviderTabs(),
     shortcut: "CommandOrControl+Shift+Space",
@@ -119,6 +124,7 @@ function normalizeV2Settings(raw: z.infer<typeof v2StoredSettingsSchema>): AppSe
     },
     alwaysOnTop: raw.alwaysOnTop,
     opacity: raw.opacity,
+    windowSizePreset: raw.windowSizePreset ?? defaultSettings.windowSizePreset,
     activeProviderId: raw.activeProviderId,
     providerTabs: {
       x: {
@@ -158,6 +164,7 @@ function normalizeLegacySettings(
     },
     alwaysOnTop: raw.alwaysOnTop ?? defaultSettings.alwaysOnTop,
     opacity: raw.opacity ?? defaultSettings.opacity,
+    windowSizePreset: raw.windowSizePreset ?? defaultSettings.windowSizePreset,
     activeProviderId: "x",
     providerTabs: {
       x: {

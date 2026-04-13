@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { ProviderId, ProviderStatus, ProviderSurface } from "../shared/providers";
+import type { WindowSizePreset } from "../shared/window-size";
 
 export interface RendererProviderDefinition {
   id: ProviderId;
@@ -23,6 +24,7 @@ export interface RendererSettings {
   };
   alwaysOnTop: boolean;
   opacity: number;
+  windowSizePreset: WindowSizePreset;
   shortcut: string;
   restoreLastSession: boolean;
   startHidden: boolean;
@@ -115,6 +117,7 @@ const DEFAULT_SETTINGS: RendererSettings = {
   },
   alwaysOnTop: true,
   opacity: 0.98,
+  windowSizePreset: "medium",
   shortcut: "CommandOrControl+Shift+Space",
   restoreLastSession: true,
   startHidden: false,
@@ -280,6 +283,10 @@ function normalizeDockState(rawState: unknown): RendererDockState {
       : fallbackSettings.windowBounds,
     alwaysOnTop: typeof rawSettings.alwaysOnTop === "boolean" ? rawSettings.alwaysOnTop : fallbackSettings.alwaysOnTop,
     opacity: typeof rawSettings.opacity === "number" ? rawSettings.opacity : fallbackSettings.opacity,
+    windowSizePreset:
+      rawSettings.windowSizePreset === "small" || rawSettings.windowSizePreset === "medium" || rawSettings.windowSizePreset === "big"
+        ? rawSettings.windowSizePreset
+        : fallbackSettings.windowSizePreset,
     shortcut: typeof rawSettings.shortcut === "string" && rawSettings.shortcut.trim().length > 0
       ? rawSettings.shortcut
       : fallbackSettings.shortcut,
