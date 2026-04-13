@@ -11,15 +11,19 @@ function getShortcutGlyph(): string {
 }
 
 function getBootstrapSurfaceLabel(providerId: ProviderId): string {
-  return providerId === "tiktok" ? "Desktop web" : "Login helper";
+  return providerId === "x" ? "Login helper" : "Desktop web";
 }
 
 function getBootstrapSurfaceDescription(providerId: ProviderId, providerLabel: string): string {
+  if (providerId === "x") {
+    return `Use the desktop login helper when auth gets picky, then return to the mobile feed view.`;
+  }
+
   if (providerId === "tiktok") {
     return `${providerLabel} works better as a desktop web timeline right now. Mobile web is still available in case you want to experiment with it.`;
   }
 
-  return `Use the desktop login helper when auth gets picky, then return to the mobile feed view.`;
+  return `${providerLabel} now runs directly in mobile web inside VibeDock.`;
 }
 
 function getSurfaceDescription(
@@ -28,26 +32,34 @@ function getSurfaceDescription(
   surface: ProviderSurface
 ): string {
   if (surface === "bootstrap") {
+    if (providerId === "x") {
+      return `You are in the ${providerLabel} desktop login helper. Finish logging in here, then return to the mobile web tab.`;
+    }
+
     if (providerId === "tiktok") {
       return `You are in the ${providerLabel} desktop web view. This is currently the recommended way to browse TikTok inside VibeDock.`;
     }
 
-    return `You are in the ${providerLabel} desktop login helper. Finish logging in here, then return to the mobile web tab.`;
+    return `You are in the ${providerLabel} desktop web view. This is the recommended way to browse Instagram inside VibeDock.`;
+  }
+
+  if (providerId === "x") {
+    return `You are in the ${providerLabel} mobile web timeline. If login ever stops working, reopen the desktop helper to refresh the session.`;
   }
 
   if (providerId === "tiktok") {
     return `You are in the ${providerLabel} mobile web view. TikTok may still push the install-app experience here, so desktop web is usually more reliable.`;
   }
 
-  return `You are in the ${providerLabel} mobile web timeline. If login ever stops working, reopen the desktop helper to refresh the session.`;
+  return `You are in the ${providerLabel} mobile web view. Login and browsing should stay inside this surface now.`;
 }
 
 function getSurfaceToggleCopy(providerId: ProviderId, surface: ProviderSurface): string {
   if (surface === "bootstrap") {
-    return providerId === "tiktok" ? "Switch to mobile web" : "Continue to mobile web";
+    return providerId === "x" ? "Continue to mobile web" : "Switch to mobile web";
   }
 
-  return providerId === "tiktok" ? "Switch back to desktop web" : "Reopen desktop login helper";
+  return providerId === "x" ? "Reopen desktop login helper" : "Switch back to desktop web";
 }
 
 function SettingsContent(props: {
@@ -63,6 +75,7 @@ function SettingsContent(props: {
   navigate: ReturnType<typeof useAppStore.getState>["navigate"];
   setProviderSurface: ReturnType<typeof useAppStore.getState>["setProviderSurface"];
   patchSettings: ReturnType<typeof useAppStore.getState>["patchSettings"];
+  reloadActiveProvider: ReturnType<typeof useAppStore.getState>["reloadActiveProvider"];
   onClose?: () => void;
 }) {
   const {
@@ -78,6 +91,7 @@ function SettingsContent(props: {
     navigate,
     setProviderSurface,
     patchSettings,
+    reloadActiveProvider,
     onClose
   } = props;
   const shortcutGlyph = getShortcutGlyph();
@@ -150,7 +164,7 @@ function SettingsContent(props: {
             {getSurfaceDescription(activeProviderId, activeProviderLabel, activeSurface)}
           </p>
           <div className="flex flex-wrap gap-2">
-            {activeSurface === "bootstrap" ? (
+            {activeProviderId === "instagram" ? null : activeSurface === "bootstrap" ? (
               <button
                 className="secondary-link"
                 type="button"
@@ -171,6 +185,15 @@ function SettingsContent(props: {
                 {getSurfaceToggleCopy(activeProviderId, "mobile")}
               </button>
             )}
+            <button
+              className="secondary-link"
+              type="button"
+              onClick={() => {
+                void reloadActiveProvider();
+              }}
+            >
+              Refresh current
+            </button>
           </div>
         </div>
 
@@ -290,6 +313,7 @@ function SettingsPanelView() {
     statusMessage,
     loading,
     navigate,
+    reloadActiveProvider,
     setProviderSurface,
     patchSettings
   } = useAppStore();
@@ -336,6 +360,7 @@ function SettingsPanelView() {
               activeSurface={activeSurface}
               settings={settings}
               navigate={navigate}
+              reloadActiveProvider={reloadActiveProvider}
               setProviderSurface={setProviderSurface}
               patchSettings={patchSettings}
               onClose={() => {
@@ -360,6 +385,7 @@ function DockView() {
     statusMessage,
     loading,
     activateProvider,
+    reloadActiveProvider,
     setContentBounds
   } = useAppStore();
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -376,6 +402,12 @@ function DockView() {
         return;
       }
 
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "r") {
+        event.preventDefault();
+        void reloadActiveProvider();
+        return;
+      }
+
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "s") {
         event.preventDefault();
         void window.dock.beginScreenshotMode();
@@ -386,7 +418,7 @@ function DockView() {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, []);
+  }, [reloadActiveProvider]);
 
   useEffect(() => {
     const element = contentRef.current;
@@ -421,6 +453,7 @@ function DockView() {
     () => providers.find((provider) => provider.id === activeProviderId),
     [activeProviderId, providers]
   );
+  const isBusy = loading || status === "loading";
   const surfaceLabel = activeSurface === "bootstrap"
     ? getBootstrapSurfaceLabel(activeProviderId)
     : "Mobile web";
@@ -483,11 +516,11 @@ function DockView() {
 
             <div className="mt-3 no-drag flex flex-wrap items-center gap-2">
               <div className="browser-chip">
-                <span className={loading ? "status-dot status-dot-live" : "status-dot"} />
+                <span className={isBusy ? "status-spinner" : "status-dot"} />
                 <span>{activeProvider?.label ?? activeProviderId}</span>
               </div>
               <div className="browser-chip browser-chip-muted">
-                <span>{loading ? "Loading" : status}</span>
+                <span>{isBusy ? "Loading" : status}</span>
               </div>
               <div className="browser-chip browser-chip-accent">
                 <span>{surfaceLabel}</span>

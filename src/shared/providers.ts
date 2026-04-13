@@ -1,4 +1,4 @@
-export type ProviderId = "x" | "tiktok";
+export type ProviderId = "x" | "tiktok" | "instagram";
 export type ProviderStatus = "idle" | "loading" | "ready" | "error";
 export type ProviderSurface = "mobile" | "bootstrap";
 

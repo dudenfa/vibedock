@@ -1,8 +1,5 @@
 import { create } from "zustand";
-
-type ProviderId = "x" | "tiktok";
-type ProviderSurface = "bootstrap" | "mobile";
-type ProviderStatus = "idle" | "loading" | "ready" | "error";
+import type { ProviderId, ProviderStatus, ProviderSurface } from "../shared/providers";
 
 export interface RendererProviderDefinition {
   id: ProviderId;
@@ -61,6 +58,7 @@ interface ViewBounds {
 interface DockApiCompat {
   getState: () => Promise<unknown>;
   navigate: (request: { providerId: ProviderId; input: string }) => Promise<unknown>;
+  reloadActiveProvider?: () => Promise<unknown>;
   updateSettings: (patch: Record<string, unknown>) => Promise<unknown>;
   setContentBounds: (bounds: ViewBounds) => Promise<void>;
   openExternal: (url: string) => Promise<void>;
@@ -83,6 +81,11 @@ const PROVIDERS: RendererProviderDefinition[] = [
     id: "tiktok",
     label: "TikTok",
     description: "Browse TikTok in a mobile web feed with session persistence."
+  },
+  {
+    id: "instagram",
+    label: "Instagram",
+    description: "Browse Instagram in a desktop-first web shell with a persistent session."
   }
 ];
 
@@ -96,6 +99,11 @@ const DEFAULT_PROVIDER_TABS: Record<ProviderId, RendererProviderTab> = {
     currentInput: "https://www.tiktok.com/foryou",
     surface: "bootstrap",
     bootstrapCompleted: false
+  },
+  instagram: {
+    currentInput: "https://www.instagram.com/",
+    surface: "mobile",
+    bootstrapCompleted: true
   }
 };
 
@@ -135,7 +143,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function normalizeProviderId(value: unknown): ProviderId {
-  return value === "tiktok" ? "tiktok" : "x";
+  if (value === "tiktok" || value === "instagram") {
+    return value;
+  }
+
+  return "x";
+}
+
+function getProviderTitle(providerId: ProviderId): string {
+  if (providerId === "tiktok") {
+    return "TikTok";
+  }
+
+  if (providerId === "instagram") {
+    return "Instagram";
+  }
+
+  return "X Timeline";
 }
 
 function normalizeSurface(value: unknown, fallback: ProviderSurface): ProviderSurface {
@@ -170,6 +194,7 @@ function normalizeProviderTabs(rawSettings: unknown, legacyInput: string, legacy
 
   const xTab = normalizeProviderTab("x", rawTabs?.x, legacyInput || DEFAULT_PROVIDER_TABS.x.currentInput);
   const tiktokTab = normalizeProviderTab("tiktok", rawTabs?.tiktok, DEFAULT_PROVIDER_TABS.tiktok.currentInput);
+  const instagramTab = normalizeProviderTab("instagram", rawTabs?.instagram, DEFAULT_PROVIDER_TABS.instagram.currentInput);
 
   if (!rawTabs && legacySurface === "mobile") {
     xTab.surface = "mobile";
@@ -178,7 +203,8 @@ function normalizeProviderTabs(rawSettings: unknown, legacyInput: string, legacy
 
   return {
     x: xTab,
-    tiktok: tiktokTab
+    tiktok: tiktokTab,
+    instagram: instagramTab
   };
 }
 
@@ -233,13 +259,13 @@ function normalizeDockState(rawState: unknown): RendererDockState {
         providerId: normalizeProviderId(rawActiveTarget.providerId ?? activeProviderId),
         input: rawActiveTarget.input,
         resolvedUrl: typeof rawActiveTarget.resolvedUrl === "string" ? rawActiveTarget.resolvedUrl : rawActiveTarget.input,
-        title: typeof rawActiveTarget.title === "string" ? rawActiveTarget.title : activeProviderId === "tiktok" ? "TikTok" : "X Timeline"
+        title: typeof rawActiveTarget.title === "string" ? rawActiveTarget.title : getProviderTitle(activeProviderId)
       }
     : {
         providerId: activeProviderId,
         input: activeTab.currentInput,
         resolvedUrl: activeTab.currentInput,
-        title: activeProviderId === "tiktok" ? "TikTok" : "X Timeline"
+        title: getProviderTitle(activeProviderId)
       };
 
   const settings: RendererSettings = {
@@ -284,6 +310,7 @@ interface AppStore extends RendererDockState {
   boot: () => Promise<void>;
   activateProvider: (request: { providerId: ProviderId }) => Promise<void>;
   navigate: (request: { providerId: ProviderId; input: string }) => Promise<void>;
+  reloadActiveProvider: () => Promise<void>;
   setProviderSurface: (request: { providerId: ProviderId; surface: ProviderSurface }) => Promise<void>;
   patchSettings: (patch: Partial<RendererSettings>) => Promise<void>;
   setContentBounds: (bounds: ViewBounds) => Promise<void>;
@@ -315,6 +342,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
   navigate: async (request) => {
     set({ loading: true });
     const state = normalizeDockState(await dock.navigate(request));
+    set({ ...state, loading: false });
+  },
+  reloadActiveProvider: async () => {
+    if (!dock.reloadActiveProvider) {
+      return;
+    }
+
+    set({ loading: true });
+    const state = normalizeDockState(await dock.reloadActiveProvider());
     set({ ...state, loading: false });
   },
   setProviderSurface: async ({ providerId, surface }) => {

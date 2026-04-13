@@ -43,6 +43,10 @@ describe("settings schema", () => {
       currentInput: "https://www.tiktok.com/foryou",
       bootstrapCompleted: false
     });
+    expect(parsed.providerTabs.instagram).toEqual({
+      currentInput: "https://www.instagram.com/",
+      bootstrapCompleted: true
+    });
   });
 
   it("preserves the inferred X bootstrap completion when legacy settings omit the flag", () => {
@@ -69,5 +73,7 @@ describe("settings schema", () => {
 
     expect(parsed.providerTabs.x.bootstrapCompleted).toBe(true);
     expect(parsed.providerTabs.x.currentInput).toBe("https://x.com/home");
+    expect(parsed.providerTabs.instagram.currentInput).toBe("https://www.instagram.com/");
+    expect(parsed.providerTabs.instagram.bootstrapCompleted).toBe(true);
   });
 });

@@ -18,7 +18,8 @@ const SESSION_ARTIFACTS = [
 ];
 const PROVIDER_PARTITION_STORAGE_PATHS: Record<ProviderId, string> = {
   x: path.join("Partitions", "vibedock", "provider", "x", "browser", "default"),
-  tiktok: path.join("Partitions", "vibedock", "provider", "tiktok", "browser", "default")
+  tiktok: path.join("Partitions", "vibedock", "provider", "tiktok", "browser", "default"),
+  instagram: path.join("Partitions", "vibedock", "provider", "instagram", "browser", "default")
 };
 
 export class SettingsService {
@@ -88,6 +89,9 @@ export class SettingsService {
       },
       tiktok: {
         ...current.providerTabs.tiktok
+      },
+      instagram: {
+        ...current.providerTabs.instagram
       }
     };
 
@@ -102,6 +106,13 @@ export class SettingsService {
       providerTabs.tiktok = {
         ...providerTabs.tiktok,
         ...patch.providerTabs.tiktok
+      };
+    }
+
+    if (patch.providerTabs?.instagram) {
+      providerTabs.instagram = {
+        ...providerTabs.instagram,
+        ...patch.providerTabs.instagram
       };
     }
 

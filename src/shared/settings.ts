@@ -15,10 +15,11 @@ export const providerTabSettingsSchema = z.object({
 
 const providerTabsSchema = z.object({
   x: providerTabSettingsSchema,
-  tiktok: providerTabSettingsSchema
+  tiktok: providerTabSettingsSchema,
+  instagram: providerTabSettingsSchema
 });
 
-const providerIdSchema = z.enum(["x", "tiktok"]);
+const providerIdSchema = z.enum(["x", "tiktok", "instagram"]);
 
 export const appSettingsSchema = z.object({
   version: z.literal(2),
@@ -71,6 +72,10 @@ function createDefaultProviderTabs(): AppSettings["providerTabs"] {
     tiktok: {
       currentInput: "https://www.tiktok.com/foryou",
       bootstrapCompleted: false
+    },
+    instagram: {
+      currentInput: "https://www.instagram.com/",
+      bootstrapCompleted: true
     }
   };
 }
@@ -123,6 +128,10 @@ function normalizeV2Settings(raw: z.infer<typeof v2StoredSettingsSchema>): AppSe
       tiktok: {
         ...defaultSettings.providerTabs.tiktok,
         ...raw.providerTabs.tiktok
+      },
+      instagram: {
+        ...defaultSettings.providerTabs.instagram,
+        ...raw.providerTabs.instagram
       }
     },
     shortcut: raw.shortcut,
@@ -157,6 +166,9 @@ function normalizeLegacySettings(
       },
       tiktok: {
         ...defaultSettings.providerTabs.tiktok
+      },
+      instagram: {
+        ...defaultSettings.providerTabs.instagram
       }
     },
     shortcut: raw.shortcut ?? defaultSettings.shortcut,

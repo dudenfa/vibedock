@@ -67,15 +67,33 @@ class TestProviderRegistry {
       createView: vi.fn(),
       resolvePreferredSurface: undefined,
       shouldAutoPromoteBootstrap: undefined
+    },
+    instagram: {
+      definition: {
+        id: "instagram",
+        label: "Instagram",
+        description: "Instagram"
+      },
+      buildHomeUrl: () => "https://www.instagram.com/",
+      normalizeInput: (input: string) => ({
+        providerId: "instagram" as const,
+        input,
+        resolvedUrl: input,
+        title: "Instagram"
+      }),
+      createSessionPartition: () => "persist:test:instagram",
+      createView: vi.fn(),
+      resolvePreferredSurface: undefined,
+      shouldAutoPromoteBootstrap: undefined
     }
   };
 
-  get(providerId: "x" | "tiktok") {
+  get(providerId: "x" | "tiktok" | "instagram") {
     return this.providers[providerId];
   }
 
   list() {
-    return [this.providers.x.definition, this.providers.tiktok.definition];
+    return [this.providers.x.definition, this.providers.tiktok.definition, this.providers.instagram.definition];
   }
 }
 
@@ -202,6 +220,43 @@ describe("ProviderViewManager", () => {
     expect(state.activeProviderId).toBe("tiktok");
     expect(state.activeSurface).toBe("bootstrap");
     expect(state.statusMessage).toBe("TikTok desktop web");
+  });
+
+  it("starts instagram in mobile mode", async () => {
+    settings = new TestSettingsService({
+      ...defaultSettings,
+      activeProviderId: "instagram",
+      providerTabs: {
+        ...defaultSettings.providerTabs,
+        instagram: {
+          currentInput: "https://www.instagram.com/",
+          bootstrapCompleted: true
+        }
+      }
+    });
+    const manager = new ProviderViewManager(
+      window as never,
+      registry as never,
+      settings as never,
+      logger as never
+    );
+    const mobileView = {
+      view: { webContents: { on: vi.fn(), isDestroyed: () => false } },
+      surface: "mobile" as const,
+      destroy: vi.fn(),
+      setBounds: vi.fn()
+    };
+
+    registry.get("instagram").createView.mockResolvedValueOnce(mobileView);
+
+    const state = await manager.navigate({
+      providerId: "instagram",
+      input: "https://www.instagram.com/"
+    });
+
+    expect(state.activeProviderId).toBe("instagram");
+    expect(state.activeSurface).toBe("mobile");
+    expect(state.statusMessage).toBe("Instagram");
   });
 
   it("downgrades X to desktop web on startup when no authenticated session is detected", async () => {

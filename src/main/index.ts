@@ -118,6 +118,10 @@ function wireIpc(window: BrowserWindow): void {
     return providerViewManager.setProviderSurface(request);
   });
 
+  ipcMain.handle(IPC_CHANNELS.reloadActiveProvider, async () => {
+    return providerViewManager.reloadActiveProvider();
+  });
+
   ipcMain.handle(IPC_CHANNELS.updateSettings, async (_event, patch) => {
     const state = await providerViewManager.updateSettings(patch);
     shortcutService.register(state.settings.shortcut);
@@ -165,6 +169,7 @@ function wireIpc(window: BrowserWindow): void {
     ipcMain.removeHandler(IPC_CHANNELS.activateProvider);
     ipcMain.removeHandler(IPC_CHANNELS.navigate);
     ipcMain.removeHandler(IPC_CHANNELS.setProviderSurface);
+    ipcMain.removeHandler(IPC_CHANNELS.reloadActiveProvider);
     ipcMain.removeHandler(IPC_CHANNELS.updateSettings);
     ipcMain.removeHandler(IPC_CHANNELS.setContentBounds);
     ipcMain.removeHandler(IPC_CHANNELS.openExternal);

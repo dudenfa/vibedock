@@ -56,6 +56,8 @@ export class ProviderViewManager {
         target: provider.normalizeInput(initialInput),
         surface: providerDefinition.id === "tiktok"
           ? "bootstrap"
+          : providerDefinition.id === "instagram"
+            ? "mobile"
           : tabSettings.bootstrapCompleted
             ? "mobile"
             : "bootstrap",
@@ -276,6 +278,34 @@ export class ProviderViewManager {
     return this.buildState(this.settings.get());
   }
 
+  async reloadActiveProvider(): Promise<DockState> {
+    const providerState = this.getProviderState(this.activeProviderId);
+    const webContents = providerState.view?.view.webContents;
+
+    if (!webContents || webContents.isDestroyed()) {
+      return this.buildState();
+    }
+
+    providerState.status = "loading";
+    providerState.statusMessage = `Refreshing ${this.registry.get(this.activeProviderId).definition.label}`;
+    this.emit(this.buildState());
+
+    try {
+      webContents.reload();
+      return this.buildState();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to refresh provider";
+      providerState.status = "error";
+      providerState.statusMessage = message;
+      this.logger.error("Failed to refresh active provider", {
+        providerId: this.activeProviderId,
+        message
+      });
+      this.emit(this.buildState());
+      return this.buildState();
+    }
+  }
+
   private async createOrReplaceView(
     providerId: ProviderId,
     actionId: number,
@@ -301,6 +331,7 @@ export class ProviderViewManager {
     }
 
     providerState.view = nextView;
+    this.installLoadingStateListeners(providerId, nextView);
     this.attachProviderView(providerId);
     if (previousView && previousView !== nextView) {
       previousView.destroy();
@@ -393,6 +424,10 @@ export class ProviderViewManager {
   private getBootstrapSurfaceLabel(providerId: ProviderId, loading = false): string {
     if (providerId === "tiktok") {
       return loading ? "Opening TikTok desktop web" : "TikTok desktop web";
+    }
+
+    if (providerId === "instagram") {
+      return loading ? "Opening Instagram desktop web" : "Instagram desktop web";
     }
 
     return loading ? "Opening desktop login helper" : "Desktop login helper";
@@ -513,6 +548,31 @@ export class ProviderViewManager {
     });
     viewInstance.view.webContents.on("did-navigate-in-page", (_event, url) => {
       maybePromote(url);
+    });
+  }
+
+  private installLoadingStateListeners(providerId: ProviderId, viewInstance: ProviderViewInstance): void {
+    const webContents = viewInstance.view.webContents;
+
+    webContents.on("did-start-loading", () => {
+      const providerState = this.getProviderState(providerId);
+      if (providerState.view !== viewInstance) {
+        return;
+      }
+
+      providerState.status = "loading";
+      providerState.statusMessage = `Refreshing ${this.registry.get(providerId).definition.label}`;
+      this.emit(this.buildState());
+    });
+
+    webContents.on("did-stop-loading", () => {
+      const providerState = this.getProviderState(providerId);
+      if (providerState.view !== viewInstance) {
+        return;
+      }
+
+      this.setReadyStatus(providerId);
+      this.emit(this.buildState());
     });
   }
 }

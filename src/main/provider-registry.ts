@@ -1,5 +1,6 @@
 import type { ProviderId } from "../shared/providers";
 import type { ProviderAdapter } from "./providers/base";
+import { InstagramProvider } from "./providers/instagram";
 import { TikTokProvider } from "./providers/tiktok";
 import { XProvider } from "./providers/x";
 
@@ -9,9 +10,11 @@ export class ProviderRegistry {
   constructor() {
     const x = new XProvider();
     const tiktok = new TikTokProvider();
+    const instagram = new InstagramProvider();
     this.providers = new Map<ProviderId, ProviderAdapter>([
       [x.definition.id, x],
-      [tiktok.definition.id, tiktok]
+      [tiktok.definition.id, tiktok],
+      [instagram.definition.id, instagram]
     ]);
   }
 

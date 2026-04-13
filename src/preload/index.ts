@@ -16,6 +16,7 @@ const api: DockApi = {
   navigate: (request: ProviderNavigationRequest) => ipcRenderer.invoke(IPC_CHANNELS.navigate, request),
   setProviderSurface: (request: ProviderSurfaceRequest) =>
     ipcRenderer.invoke(IPC_CHANNELS.setProviderSurface, request),
+  reloadActiveProvider: () => ipcRenderer.invoke(IPC_CHANNELS.reloadActiveProvider),
   updateSettings: (patch: Partial<AppSettings>) => ipcRenderer.invoke(IPC_CHANNELS.updateSettings, patch),
   setContentBounds: (bounds: ViewBounds) => ipcRenderer.invoke(IPC_CHANNELS.setContentBounds, bounds),
   openExternal: (url: string) => ipcRenderer.invoke(IPC_CHANNELS.openExternal, url),

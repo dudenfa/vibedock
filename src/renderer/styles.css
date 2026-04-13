@@ -213,6 +213,25 @@ select {
   box-shadow: 0 0 0 0.35rem rgba(94, 234, 212, 0.12);
 }
 
+.status-spinner {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  border: 2px solid rgba(94, 234, 212, 0.22);
+  border-top-color: #5eead4;
+  animation: status-spin 0.8s linear infinite;
+}
+
+@keyframes status-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .browser-chip {
   display: inline-flex;
   align-items: center;

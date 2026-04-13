@@ -37,6 +37,7 @@ export interface DockApi {
   activateProvider: (request: ProviderActivationRequest) => Promise<DockState>;
   navigate: (request: ProviderNavigationRequest) => Promise<DockState>;
   setProviderSurface: (request: ProviderSurfaceRequest) => Promise<DockState>;
+  reloadActiveProvider: () => Promise<DockState>;
   updateSettings: (patch: Partial<AppSettings>) => Promise<DockState>;
   setContentBounds: (bounds: ViewBounds) => Promise<void>;
   openExternal: (url: string) => Promise<void>;
@@ -50,6 +51,7 @@ export const IPC_CHANNELS = {
   activateProvider: "dock:activate-provider",
   navigate: "dock:navigate",
   setProviderSurface: "dock:set-provider-surface",
+  reloadActiveProvider: "dock:reload-active-provider",
   updateSettings: "dock:update-settings",
   setContentBounds: "dock:set-content-bounds",
   openExternal: "dock:open-external",
