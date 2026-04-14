@@ -44,9 +44,16 @@ export function resolveWindowBounds({
     y: savedBounds.y ?? fallbackY
   };
 
-  const visibleWorkArea = workAreas.find((workArea) => {
-    return getIntersectionArea(desiredBounds, workArea) > 0;
-  });
+  const visibleWorkArea = workAreas.reduce<WorkArea | undefined>((best, workArea) => {
+    const area = getIntersectionArea(desiredBounds, workArea);
+    if (area <= 0) {
+      return best;
+    }
+    if (!best || area > getIntersectionArea(desiredBounds, best)) {
+      return workArea;
+    }
+    return best;
+  }, undefined);
 
   const targetWorkArea = visibleWorkArea ?? primaryWorkArea;
   const width = clampDimension(savedBounds.width, minWidth, targetWorkArea.width);
